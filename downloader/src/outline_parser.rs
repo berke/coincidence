@@ -48,3 +48,10 @@ pub fn multipolygon(u:&str)->IResult<&str,Vec<Vec<Vec<(f64,f64)>>>> {
 			 char(')')))),
 	eof)(u)
 }
+
+pub fn parse_multipolygon(u:&str)->Option<Vec<Vec<Vec<(f64,f64)>>>> {
+    match multipolygon(u) {
+	Ok((_,mp)) => Some(mp),
+	Err(_) => None
+    }
+}

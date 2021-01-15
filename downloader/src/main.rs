@@ -1,4 +1,5 @@
 mod misc_error;
+mod outline_parser;
 
 use misc_error::MiscError;
 use std::error::Error;
@@ -9,7 +10,7 @@ use xml::reader::{EventReader,XmlEvent};
 pub struct Footprint {
     orbit:usize,
     id:String,
-    outline:String
+    outline:Vec<Vec<Vec<(f64,f64)>>>
 }
 
 impl Footprint {
@@ -17,7 +18,7 @@ impl Footprint {
 	Self{
 	    orbit:0,
 	    id:String::new(),
-	    outline:String::new()
+	    outline:Vec::new()
 	}
     }
 
@@ -31,8 +32,8 @@ impl Footprint {
 	self.orbit = orbit;
     }
 
-    pub fn set_outline(&mut self,outline:&str) {
-	self.outline = outline.to_string();
+    pub fn set_outline(&mut self,outline:&Vec<Vec<Vec<(f64,f64)>>>) {
+	self.outline = outline.to_vec();
     }
 
     pub fn set_id(&mut self,id:&str) {
@@ -44,7 +45,6 @@ impl Footprint {
 async fn main()->Result<(),Box<dyn Error>> {
     let mut url = Url::parse("https://s5phub.copernicus.eu/dhus/search")?;
     let query = "platformname:Sentinel-5 AND producttype:L1B_RA_BD7 AND processinglevel:L1B AND processingmode:Offline AND orbitnumber:15839";
-    //let query = "platformname:Sentinel-5 AND (producttype:L1B_RA_BD7 OR producttype:L1B_RA_BD8) AND processinglevel:L1B AND processingmode:Offline AND orbitnumber:15839";
     MiscError::convert(url.set_username("s5pguest"),"Cannot set user name")?;
     MiscError::convert(url.set_password(Some("s5pguest")),"Cannot set password")?;
     url.query_pairs_mut().append_pair("q",&query);
@@ -76,7 +76,7 @@ async fn main()->Result<(),Box<dyn Error>> {
 				"str" if q == State::Entry => {
 				    if let Some(a) = attributes.iter().find(|&a| a.name.local_name == "name") {
 					match a.value.as_str() {
-					    "gmlfootprint" => q = State::Footprint,
+					    "footprint" => q = State::Footprint,
 					    "identifier" => q = State::Identifier,
 					    _ => ()
 					}
@@ -104,8 +104,12 @@ async fn main()->Result<(),Box<dyn Error>> {
 		    },
 		    (State::Footprint,XmlEvent::Characters(u)) => {
 			println!("OUTLINE: {}",u);
-			fp.set_outline(&u);
-			q = State::Entry;
+			if let Some(out) = outline_parser::parse_multipolygon(&u) {
+			    fp.set_outline(&out);
+			    q = State::Entry;
+			} else {
+			    println!("ERROR: Cannot parse outline");
+			}
 		    },
 		    (State::Identifier,XmlEvent::Characters(u)) => {
 			println!("ID: {}",u);
