@@ -18,4 +18,4 @@ nom = { version = "6" }
 
 [[bin]]
 name = "test_outline_parser"
-path = "src/outline_parser.rs"
+path = "src/test_outline_parser.rs"
