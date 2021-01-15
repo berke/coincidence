@@ -1,10 +1,12 @@
 mod misc_error;
 mod outline_parser;
+mod minisvg;
 
 use misc_error::MiscError;
 use std::error::Error;
 use url::Url;
 use xml::reader::{EventReader,XmlEvent};
+use minisvg::MiniSVG;
 
 #[derive(Debug,Clone)]
 pub struct Footprint {
@@ -44,7 +46,8 @@ impl Footprint {
 #[tokio::main]
 async fn main()->Result<(),Box<dyn Error>> {
     let mut url = Url::parse("https://s5phub.copernicus.eu/dhus/search")?;
-    let query = "platformname:Sentinel-5 AND producttype:L1B_RA_BD7 AND processinglevel:L1B AND processingmode:Offline AND orbitnumber:15839";
+    let query = "platformname:Sentinel-5 AND producttype:L1B_RA_BD7 AND processinglevel:L1B AND processingmode:Offline AND beginPosition:[2019-05-18T00:00:00.000Z TO 2019-05-19T23:59:59.999Z]";
+    //orbitnumber:15839";
     MiscError::convert(url.set_username("s5pguest"),"Cannot set user name")?;
     MiscError::convert(url.set_password(Some("s5pguest")),"Cannot set password")?;
     url.query_pairs_mut().append_pair("q",&query);
@@ -155,8 +158,22 @@ async fn main()->Result<(),Box<dyn Error>> {
     }
     let n_footprint = footprints.len();
     println!("Number of footprints found: {}",n_footprint);
+    let mut ms = MiniSVG::new("out.svg",360.0,180.0)?;
+    ms.set_stroke(Some((0xff0000,0.25)));
+    ms.set_fill(Some(0xffff80));
     for f in footprints.iter() {
-	println!(">>> {:?}",f);
+	println!("Orbit: {}",f.orbit);
+	println!("ID: {}",f.id);
+	for a in f.outline.iter() {
+	    for b in a.iter() {
+		let mp : Vec<(f64,f64)> = b.iter().map(|(x,y)| (x+180.0,y+90.0)).collect();
+		ms.polygon(&mp)?;
+		// println!("POLYGON {}",b.len());
+		// for (x,y) in b.iter() {
+		//     println!("{},{}",x,y);
+		// }
+	    }
+	}
     }
     Ok(())
 }

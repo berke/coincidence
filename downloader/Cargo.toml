@@ -19,3 +19,7 @@ nom = { version = "6" }
 [[bin]]
 name = "test_outline_parser"
 path = "src/test_outline_parser.rs"
+
+[[bin]]
+name = "test_minisvg"
+path = "src/test_minisvg.rs"

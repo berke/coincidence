@@ -54,7 +54,7 @@ impl MiniSVG {
 	Ok(())
     }
 
-    pub fn polygon(&mut self,path:Vec<(f64,f64)>)->Result<(),Box<dyn Error>> {
+    pub fn polygon(&mut self,path:&Vec<(f64,f64)>)->Result<(),Box<dyn Error>> {
 	write!(self.buf,"<path ")?;
 	self.write_style()?;
 	write!(self.buf," d=\"M")?;
@@ -67,5 +67,9 @@ impl MiniSVG {
 
     pub fn set_stroke(&mut self,stroke:Option<(u32,f64)>) {
 	self.stroke = stroke;
+    }
+
+    pub fn set_fill(&mut self,fill:Option<u32>) {
+	self.fill = fill;
     }
 }
