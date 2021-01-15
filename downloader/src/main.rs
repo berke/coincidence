@@ -5,10 +5,46 @@ use std::error::Error;
 use url::Url;
 use xml::reader::{EventReader,XmlEvent};
 
+#[derive(Debug,Clone)]
+pub struct Footprint {
+    orbit:usize,
+    id:String,
+    outline:String
+}
+
+impl Footprint {
+    pub fn new()->Self {
+	Self{
+	    orbit:0,
+	    id:String::new(),
+	    outline:String::new()
+	}
+    }
+
+    pub fn clear(&mut self) {
+	self.orbit = 0;
+	self.id.clear();
+	self.outline.clear();
+    }
+
+    pub fn set_orbit(&mut self,orbit:usize) {
+	self.orbit = orbit;
+    }
+
+    pub fn set_outline(&mut self,outline:&str) {
+	self.outline = outline.to_string();
+    }
+
+    pub fn set_id(&mut self,id:&str) {
+	self.id = id.to_string();
+    }
+}
+
 #[tokio::main]
 async fn main()->Result<(),Box<dyn Error>> {
     let mut url = Url::parse("https://s5phub.copernicus.eu/dhus/search")?;
-    let query = "platformname:Sentinel-5 AND (producttype:L1B_RA_BD7 OR producttype:L1B_RA_BD8) AND processinglevel:L1B AND processingmode:Offline AND orbitnumber:15839";
+    let query = "platformname:Sentinel-5 AND producttype:L1B_RA_BD7 AND processinglevel:L1B AND processingmode:Offline AND orbitnumber:15839";
+    //let query = "platformname:Sentinel-5 AND (producttype:L1B_RA_BD7 OR producttype:L1B_RA_BD8) AND processinglevel:L1B AND processingmode:Offline AND orbitnumber:15839";
     MiscError::convert(url.set_username("s5pguest"),"Cannot set user name")?;
     MiscError::convert(url.set_password(Some("s5pguest")),"Cannot set password")?;
     url.query_pairs_mut().append_pair("q",&query);
@@ -18,48 +54,93 @@ async fn main()->Result<(),Box<dyn Error>> {
 	.await?;
     println!("RESP: {:?}",resp);
     let mut ev = EventReader::from_str(&resp);
-    #[derive(Copy,Clone)]
-    enum State { Init,Footprint,Done }
+    #[derive(Copy,Clone,PartialEq,Eq,Debug)]
+    enum State { Init,Entry,Footprint,OrbitNumber,Identifier }
     let mut q = State::Init;
     let mut footprints = Vec::new();
+    let mut fp = Footprint::new();
+    let mut elems = Vec::new();
     loop {
 	match ev.next() {
 	    Ok(e) => {
-		println!("EV {:?}",e);
+		println!("q={:?} EV {:?}",q,e);
 		match (q,e) {
-		    (State::Init,XmlEvent::StartElement{ name, attributes, namespace }) => { // if name == "gmlfootprint" => {
-			if name.local_name == "str" {
-			    if let Some(pf) = namespace.get("opensearch") {
-				// println!("OSEARCH PF {}",pf);
-				if let Some(a) = attributes.iter().find(|&a| a.name.local_name == "name") {
-				    if a.value == "gmlfootprint" {
-					q = State::Footprint;
+		    (_,XmlEvent::StartElement{ name, attributes, namespace }) => {
+			elems.push((name.clone(),namespace.clone()));
+			if let Some(pf) = namespace.get("opensearch") {
+			    println!("Prefix: {}",pf);
+			    match name.local_name.as_str() {
+				"entry" if q == State::Init => {
+				    q = State::Entry
+				},
+				"str" if q == State::Entry => {
+				    if let Some(a) = attributes.iter().find(|&a| a.name.local_name == "name") {
+					match a.value.as_str() {
+					    "gmlfootprint" => q = State::Footprint,
+					    "identifier" => q = State::Identifier,
+					    _ => ()
+					}
 				    }
-				    // println!("name={}",a.value);
-				    // 		       // 	       println!("LOCNAME {} VAL {}",
-				    // 		       // 			a.name.local_name, a.value);
-				    // 		       // 	   }
-				    // 		       // 	   false
-				    // 		       // });
+				},
+				"int" if q == State::Entry => {
+				    if let Some(_) = namespace.get("opensearch") {
+					if let Some(a) = attributes.iter().find(|&a| a.name.local_name == "name") {
+					    match a.value.as_str() {
+						"orbitnumber" => q = State::OrbitNumber,
+						_ => ()
+					    }
+					}
+				    }
+				}
+				ln => {
+				    println!("Unhandled name {}",ln);
 				}
 			    }
+			} else {
+			    println!("NAME {:?}",name);
+			    println!("ATTR {:?}",attributes);
+			    println!("NAMESPACE {:?}",namespace);
 			}
-			// println!("NAME {:?}",name);
-			// println!("ATTR {:?}",attributes);
-			// println!("NAMESPACE {:?}",namespace);
 		    },
 		    (State::Footprint,XmlEvent::Characters(u)) => {
-			// println!("GML: {}",u);
-			footprints.push(u);
-			q = State::Init;
-		    }
-		    (_,XmlEvent::EndElement{ name, .. }) => {
-			// println!("END {}",name);
+			println!("OUTLINE: {}",u);
+			fp.set_outline(&u);
+			q = State::Entry;
+		    },
+		    (State::Identifier,XmlEvent::Characters(u)) => {
+			println!("ID: {}",u);
+			fp.set_id(&u);
+			q = State::Entry;
+		    },
+		    (State::OrbitNumber,XmlEvent::Characters(u)) => {
+			let num : usize = u.parse().unwrap();
+			println!("ORBNUM: {}",num);
+			fp.set_orbit(num);
+			q = State::Entry;
+		    },
+		    (State::Entry,XmlEvent::EndElement{ name }) => {
+			if let Some((name2,namespace)) = elems.pop() {
+			    if name == name2 {
+				if let Some(pf) = namespace.get("opensearch") {
+				    println!("Prefix: {}",pf);
+				    match name.local_name.as_str() {
+					"entry" if q == State::Entry => {
+					    footprints.push(fp.clone());
+					    fp.clear();
+					    q = State::Init;
+					},
+					_ => ()
+				    }
+				}
+			    } else {
+				println!("ERROR: Mismatched name {} vs {}",name,name2);
+			    }
+			} else {
+			    println!("ERROR: Stack empty");
+			}
 		    },
 		    (_,XmlEvent::EndDocument) => break,
-		    (_,x) => {
-			// println!("OTHER {:?}",x);
-		    },
+		    _ => ()
 		}
 	    },
 	    Err(e) => {
@@ -71,7 +152,7 @@ async fn main()->Result<(),Box<dyn Error>> {
     let n_footprint = footprints.len();
     println!("Number of footprints found: {}",n_footprint);
     for f in footprints.iter() {
-	println!(">>> {}",f);
+	println!(">>> {:?}",f);
     }
     Ok(())
 }
