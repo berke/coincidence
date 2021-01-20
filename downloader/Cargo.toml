@@ -17,6 +17,7 @@ regex = { version = "1" }
 nom = { version = "6" }
 json = { version = "^0.11" }
 chrono = { version = "^0.4" }
+rmp-serde = { version = "^0.15" }
 # percent-encoding = { version = "^2.1" }
 
 [[bin]]

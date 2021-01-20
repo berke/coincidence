@@ -1,4 +1,6 @@
-#[derive(Debug,Clone)]
+use serde::{Serialize,Deserialize};
+
+#[derive(Debug,Clone,Serialize,Deserialize)]
 pub struct Footprint {
     pub orbit:usize,
     pub id:String,
@@ -19,4 +21,9 @@ impl Footprint {
 	    outline:Vec::new()
 	}
     }
+}
+
+#[derive(Debug,Clone,Serialize,Deserialize)]
+pub struct Footprints {
+    pub footprints:Vec<Footprint>
 }

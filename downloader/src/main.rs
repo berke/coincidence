@@ -3,16 +3,19 @@ mod outline_parser;
 mod minisvg;
 mod footprint;
 
+use serde::{Serialize,Deserialize};
 use ron::de::from_reader;
-use serde::Deserialize;
+use rmp_serde::Serializer;
 use misc_error::MiscError;
 use std::error::Error;
-use std::path::Path;
+use std::path::{Path,PathBuf};
+use std::fs::File;
+use std::io::BufWriter;
 use url::Url;
 use xml::reader::{EventReader,XmlEvent};
 use chrono::{NaiveDate,NaiveDateTime,Datelike,DateTime,Duration,SecondsFormat,Utc,TimeZone};
 use minisvg::MiniSVG;
-use footprint::Footprint;
+use footprint::{Footprint,Footprints};
 
 use self::config::Config;
 
@@ -46,7 +49,7 @@ fn next_month(d:&DateTime<Utc>)->DateTime<Utc> {
     DateTime::<Utc>::from_utc(d1,Utc)
 }
 
-async fn process_tropomi(cfg:&config::Tropomi,year:i32,month:u32)->Result<(),Box<dyn Error>> {
+async fn process_tropomi(cfg:&config::Tropomi,year:i32,month:u32)->Result<Footprints,Box<dyn Error>> {
     let mut url = Url::parse(&cfg.base_url)?;
 
     let t_start = Utc.ymd(year,month,1).and_hms(0,0,0);
@@ -169,9 +172,9 @@ async fn process_tropomi(cfg:&config::Tropomi,year:i32,month:u32)->Result<(),Box
 	    }
 	}
     }
-    draw_footprints(&footprints,"out.svg")?;
-    println!("{:?}",footprints);
-    Ok(())
+    // draw_footprints(&footprints,"out.svg")?;
+    // println!("{:?}",footprints);
+    Ok(Footprints{ footprints })
 }
 
 fn split_once(u:&str,sep:char)->Option<(&str,&str)> {
@@ -364,11 +367,21 @@ fn process(cfg:&Config)->Result<(),Box<dyn Error>> {
 	    }
 	    println!("Processing {:04}-{:02}...",y,m);
 
+	    let mut k = 0;
 	    for s in sources.iter() {
-		match s {
-		    Source::Tropomi(trop) => runtime.block_on(process_tropomi(trop,y,m))?,
-		    Source::IASI(iasi) => { }
-		}
+		let (fps,sname) =
+		    match s {
+			Source::Tropomi(trop) => (runtime.block_on(process_tropomi(trop,y,m))?,"tropomi"),
+			Source::IASI(iasi) => panic!("foo")
+		    };
+		let mut path = PathBuf::from(&cfg.out_path);
+		path.push(&format!("{:04}-{:02}",y,m));
+		std::fs::create_dir_all(&path)?;
+		path.push(&format!("{}-{:03}.mpk",sname,k));
+		k += 1;
+		let fd = File::create(&path)?;
+		let mut buf = BufWriter::new(fd);
+		fps.serialize(&mut rmp_serde::Serializer::new(&mut buf))?;
 	    }
 
 	    m += 1;
