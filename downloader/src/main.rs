@@ -5,11 +5,32 @@ mod footprint;
 
 use misc_error::MiscError;
 use std::error::Error;
+use std::path::Path;
 use url::Url;
 use xml::reader::{EventReader,XmlEvent};
 use chrono::DateTime;
 use minisvg::MiniSVG;
 use footprint::Footprint;
+
+fn draw_footprints<P:AsRef<Path>>(footprints:&Vec<Footprint>,path:P)->Result<(),Box<dyn Error>> {
+    let n_footprint = footprints.len();
+    println!("Number of footprints found: {}",n_footprint);
+    let mut ms = MiniSVG::new(path,360.0,180.0)?;
+    ms.set_stroke(Some((0xff0000,0.25,1.0)));
+    ms.set_fill(Some((0xffff80,0.25)));
+    for f in footprints.iter() {
+	// println!("Orbit: {}",f.orbit);
+	// println!("ID: {}",f.id);
+	for a in f.outline.iter() {
+	    let mp : Vec<Vec<(f64,f64)>> =
+		a.iter().map(|b| {
+			     let c : Vec<(f64,f64)> = b.iter().map(|(x,y)| (x+180.0,y+90.0)).collect();
+		    c }).collect();
+	    ms.multi_polygon(&mp)?;
+	}
+    }
+    Ok(())
+}
 
 async fn main_s5p()->Result<(),Box<dyn Error>> {
     let mut url = Url::parse("https://s5phub.copernicus.eu/dhus/search")?;
@@ -28,10 +49,9 @@ async fn main_s5p()->Result<(),Box<dyn Error>> {
     enum State { Init,Entry,Footprint,OrbitNumber,Identifier }
     let mut q = State::Init;
     let mut footprints = Vec::new();
-    let mut fp;
+    let mut fp = Footprint::new();
     let mut elems = Vec::new();
     loop {
-	fp = Footprint::new();
 	match ev.next() {
 	    Ok(e) => {
 		println!("q={:?} EV {:?}",q,e);
@@ -76,7 +96,7 @@ async fn main_s5p()->Result<(),Box<dyn Error>> {
 		    (State::Footprint,XmlEvent::Characters(u)) => {
 			println!("OUTLINE: {}",u);
 			if let Some(out) = outline_parser::parse_multipolygon(&u) {
-			    fp.set_outline(&out);
+			    fp.outline = out;
 			    q = State::Entry;
 			} else {
 			    println!("ERROR: Cannot parse outline");
@@ -84,13 +104,13 @@ async fn main_s5p()->Result<(),Box<dyn Error>> {
 		    },
 		    (State::Identifier,XmlEvent::Characters(u)) => {
 			println!("ID: {}",u);
-			fp.set_id(&u);
+			fp.id = u;
 			q = State::Entry;
 		    },
 		    (State::OrbitNumber,XmlEvent::Characters(u)) => {
 			let num : usize = u.parse().unwrap();
 			println!("ORBNUM: {}",num);
-			fp.set_orbit(num);
+			fp.orbit = num;
 			q = State::Entry;
 		    },
 		    (State::Entry,XmlEvent::EndElement{ name }) => {
@@ -101,7 +121,7 @@ async fn main_s5p()->Result<(),Box<dyn Error>> {
 				    match name.local_name.as_str() {
 					"entry" if q == State::Entry => {
 					    footprints.push(fp.clone());
-					    fp.clear();
+					    fp = Footprint::new();
 					    q = State::Init;
 					},
 					_ => ()
@@ -124,28 +144,9 @@ async fn main_s5p()->Result<(),Box<dyn Error>> {
 	    }
 	}
     }
-    let n_footprint = footprints.len();
-    println!("Number of footprints found: {}",n_footprint);
-    let mut ms = MiniSVG::new("out.svg",360.0,180.0)?;
-    ms.set_stroke(Some((0xff0000,0.25)));
-    ms.set_fill(Some(0xffff80));
-    for f in footprints.iter() {
-	println!("Orbit: {}",f.orbit);
-	println!("ID: {}",f.id);
-	for a in f.outline.iter() {
-	    for b in a.iter() {
-		let mp : Vec<(f64,f64)> = b.iter().map(|(x,y)| (x+180.0,y+90.0)).collect();
-		ms.polygon(&mp)?;
-		// println!("POLYGON {}",b.len());
-		// for (x,y) in b.iter() {
-		//     println!("{},{}",x,y);
-		// }
-	    }
-	}
-    }
+    draw_footprints(&footprints,"out.svg")?;
     Ok(())
 }
-
 
 fn split_once(u:&str,sep:char)->Option<(&str,&str)> {
     let u : Vec<&str> = u.splitn(2,sep).collect();
@@ -204,17 +205,6 @@ fn convert_eumetsat_product(id:&str,obj:&json::JsonValue)->Result<Footprint,Box<
     } else {
 	MiscError::boxed("Geometry type undefined or not MultiPolygon")
     }
-    // } else {
-    // 		} else {
-    // 		    println!("No platform for {}",id);
-    // 		}
-    // 	    } else {
-    // 		println!("Cannot split date for {}",id);
-    // 	    }
-    // 	} else {
-    // 	    println!("No date for {}",id);
-    // 	}
-    // }
 }
 
 async fn main_metop()->Result<(),Box<dyn Error>> {
@@ -254,41 +244,14 @@ async fn main_metop()->Result<(),Box<dyn Error>> {
 	    .text()
 	    .await?;
 	let obj = json::parse(&resp)?;
-	// let geo = &obj["geometry"];
 	let fp = convert_eumetsat_product(id,&obj)?;
 	footprints.push(fp);
-	// // if let Some("MultiPolygon") = geo["type"].as_str() {
-	// // } else {
-	// //     println!(""
-	// // }
-	// let props = &obj["properties"];
-	// if let Some(date) = props["date"].as_str() {
-	//     if let Some((obs_start,obs_end)) = split_once(date,'/') {
-	// 	let obs_start = DateTime::parse_from_rfc3339(obs_start)?.timestamp() as f64;
-	// 	let obs_end = DateTime::parse_from_rfc3339(obs_end)?.timestamp() as f64;
-	// 	if let Some(platform) = props["acquisitionInformation"][0]["platform"]["platformShortName"].as_str()
-	// 	{
-	// 	    println!("{} {} {} {} {}",
-	// 		     id,
-	// 		     platform,
-	// 		     obs_start,
-	// 		     obs_end,
-	// 		     url);
-	// 	} else {
-	// 	    println!("No platform for {}",id);
-	// 	}
-	//     } else {
-	// 	println!("Cannot split date for {}",id);
-	//     }
-	// } else {
-	//     println!("No date for {}",id);
-	// }
 	n_product += 1;
 	if n_product >= max_product {
 	    break;
 	}
     }
-    println!("FOOTPRINTS:\n{:?}",footprints);
+    draw_footprints(&footprints,"out.svg")?;
     Ok(())
 }
 

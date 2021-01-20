@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::path::Path;
 use std::fs::File;
 use std::io::{Write,BufWriter};
@@ -5,8 +6,8 @@ use std::error::Error;
 
 pub struct MiniSVG {
     buf:BufWriter<File>,
-    stroke:Option<(u32,f64)>,
-    fill:Option<u32>
+    stroke:Option<(u32,f64,f64)>,
+    fill:Option<(u32,f64)>
 }
 
 impl Drop for MiniSVG {
@@ -44,11 +45,11 @@ impl MiniSVG {
 	write!(self.buf,"style=\"")?;
 	match self.fill {
 	    None => write!(self.buf,"fill:none;")?,
-	    Some(c) => write!(self.buf,"fill:#{:06x};fill-rule:evenodd;",c)?
+	    Some((c,op)) => write!(self.buf,"fill:#{:06x};fill-rule:evenodd;opacity:{};",c,op)?
 	}
 	match self.stroke {
 	    None => write!(self.buf,"stroke:none")?,
-	    Some((c,w)) => write!(self.buf,"stroke-width:{};stroke:#{:06x}",w,c)?
+	    Some((c,w,op)) => write!(self.buf,"stroke-width:{};stroke:#{:06x};stroke-opacity:{}",w,c,op)?
 	}
 	write!(self.buf,"\"")?;
 	Ok(())
@@ -65,12 +66,32 @@ impl MiniSVG {
 	Ok(())
     }
 
-    pub fn set_stroke(&mut self,stroke:Option<(u32,f64)>) {
+    pub fn multi_polygon(&mut self,polys:&Vec<Vec<(f64,f64)>>)->Result<(),Box<dyn Error>> {
+	write!(self.buf,"<path ")?;
+	self.write_style()?;
+	write!(self.buf," d=\"")?;
+	let mut first = true;
+	for poly in polys.iter() {
+	    if first {
+		first = false;
+	    } else {
+		write!(self.buf," ")?;
+	    }
+	    write!(self.buf,"M")?;
+	    for (x,y) in poly.iter() {
+		write!(self.buf," {},{}",x,y)?;
+	    }
+	    write!(self.buf," Z")?;
+	}
+	write!(self.buf,"\"/>\n")?;
+	Ok(())
+    }
+
+    pub fn set_stroke(&mut self,stroke:Option<(u32,f64,f64)>) {
 	self.stroke = stroke;
     }
 
-    #[allow(dead_code)]
-    pub fn set_fill(&mut self,fill:Option<u32>) {
+    pub fn set_fill(&mut self,fill:Option<(u32,f64)>) {
 	self.fill = fill;
     }
 }
