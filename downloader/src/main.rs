@@ -128,8 +128,8 @@ async fn process_tropomi(cfg:&config::Tropomi,year:i32,month:u32)->Result<Footpr
 				    "itemsPerPage" if q == State::Init => {
 					q = State::ItemsPerPage;
 				    },
-				    ln => {
-					eprintln!("Unhandled name {}",ln);
+				    _ln => {
+					//eprintln!("Unhandled name {}",ln);
 				    }
 				}
 			    } else {
@@ -345,23 +345,19 @@ fn convert_eumetsat_product(id:&str,obj:&json::JsonValue)->Result<Footprint,Box<
 async fn process_iasi(cfg:&config::IASI,year:i32,month:u32)->Result<Footprints,Box<dyn Error>> {
     // There seems to be an issue with percent-encoding of colons in the collection name
     let mut url = Url::parse(&format!("{}/{}",cfg.base_url,cfg.collection))?;
-    // let year : u32 = 2019;
-    // let month : u32 = 06;
     url.path_segments_mut()
 	.map_err(|_| "This URL cannot be a base")?
 	.extend(&["dates",&format!("{:04}",year),&format!("{:02}",month), "products"]);
     url.query_pairs_mut().append_pair("format","json");
-    // println!("Requesting URL {}",url.as_str());
+    println!("Querying URL: {}",url);
     let resp = reqwest::get(url)
     	.await?
     	.text()
     	.await?;
-    // println!("RESP: {:?}",resp);
     let obj = json::parse(&resp)?;
     let mut products : Vec<(String,String)> = Vec::new();
     for prod in obj["products"].members() {
 	if let Some(id) = prod["id"].as_str() {
-	    // println!("{}",id);
 	    for lk in prod["links"].members() {
 		if let Some(url) = lk["href"].as_str() {
 		    products.push((id.to_string(),url.to_string()));
@@ -373,6 +369,7 @@ async fn process_iasi(cfg:&config::IASI,year:i32,month:u32)->Result<Footprints,B
     let mut footprints = Vec::new();
     let mut n_url = 0;
     for (id,url) in products.iter() {
+	println!("Checking footprints for {}",id);
 	let resp = reqwest::get(url)
 	    .await?
 	    .text()
