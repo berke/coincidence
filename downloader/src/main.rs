@@ -3,41 +3,16 @@ mod outline_parser;
 mod minisvg;
 mod footprint;
 
-use serde::Serialize;
 use ron::de::from_reader;
 use misc_error::MiscError;
 use std::error::Error;
-use std::path::{Path,PathBuf};
-use std::fs::File;
-use std::io::BufWriter;
+use std::path::PathBuf;
 use url::Url;
 use xml::reader::{EventReader,XmlEvent};
 use chrono::{Datelike,DateTime,Duration,SecondsFormat,Utc,TimeZone};
-use minisvg::MiniSVG;
 use footprint::{Footprint,Footprints};
 
 use self::config::Config;
-
-fn draw_footprints<P:AsRef<Path>>(fps:&Footprints,path:P)->Result<(),Box<dyn Error>> {
-    let Footprints{ footprints } = fps;
-    let n_footprint = footprints.len();
-    println!("Number of footprints found: {}",n_footprint);
-    let mut ms = MiniSVG::new(path,360.0,180.0)?;
-    ms.set_stroke(Some((0xff0000,0.25,1.0)));
-    ms.set_fill(Some((0xffff80,0.25)));
-    for f in footprints.iter() {
-	// println!("Orbit: {}",f.orbit);
-	// println!("ID: {}",f.id);
-	for a in f.outline.iter() {
-	    let mp : Vec<Vec<(f64,f64)>> =
-		a.iter().map(|b| {
-			     let c : Vec<(f64,f64)> = b.iter().map(|(x,y)| (x+180.0,y+90.0)).collect();
-		    c }).collect();
-	    ms.multi_polygon(&mp)?;
-	}
-    }
-    Ok(())
-}
 
 fn next_month(d:&DateTime<Utc>)->DateTime<Utc> {
     let nd = d.naive_utc().date();
@@ -51,7 +26,7 @@ fn next_month(d:&DateTime<Utc>)->DateTime<Utc> {
 
 async fn process_tropomi(cfg:&config::Tropomi,year:i32,month:u32)->Result<Footprints,Box<dyn Error>> {
     #[derive(Copy,Clone,PartialEq,Eq,Debug)]
-    enum State { Init,Entry,Footprint,OrbitNumber,Identifier,TotalResults,ItemsPerPage }
+    enum State { Init,Entry,Footprint,OrbitNumber,Identifier,TotalResults,ItemsPerPage,BeginPosition,EndPosition }
 
     let mut total_results = None;
     let mut start_row = 0;
@@ -90,6 +65,8 @@ async fn process_tropomi(cfg:&config::Tropomi,year:i32,month:u32)->Result<Footpr
 	let mut fp = Footprint::new();
 	let mut elems = Vec::new();
 	let mut items_per_page = None;
+	let mut obs_start = 0.0;
+	let mut obs_end = 0.0;
 	loop {
 	    match ev.next() {
 		Ok(e) => {
@@ -109,6 +86,17 @@ async fn process_tropomi(cfg:&config::Tropomi,year:i32,month:u32)->Result<Footpr
 						"footprint" => q = State::Footprint,
 						"identifier" => q = State::Identifier,
 						_ => ()
+					    }
+					}
+				    },
+				    "date" if q == State::Entry => {
+					if let Some(_) = namespace.get("opensearch") {
+					    if let Some(a) = attributes.iter().find(|&a| a.name.local_name == "name") {
+						match a.value.as_str() {
+						    "beginposition" => q = State::BeginPosition,
+						    "endposition" => q = State::EndPosition,
+						    _ => ()
+						}
 					    }
 					}
 				    },
@@ -170,6 +158,14 @@ async fn process_tropomi(cfg:&config::Tropomi,year:i32,month:u32)->Result<Footpr
 			    fp.orbit = num;
 			    q = State::Entry;
 			},
+			(State::BeginPosition,XmlEvent::Characters(u)) => {
+			    obs_start = DateTime::parse_from_rfc3339(&u)?.timestamp() as f64;
+			    q = State::Entry;
+			},
+			(State::EndPosition,XmlEvent::Characters(u)) => {
+			    obs_end = DateTime::parse_from_rfc3339(&u)?.timestamp() as f64;
+			    q = State::Entry;
+			},
 			(State::Entry,XmlEvent::EndElement{ name }) => {
 			    if let Some((name2,namespace)) = elems.pop() {
 				if name == name2 {
@@ -177,6 +173,9 @@ async fn process_tropomi(cfg:&config::Tropomi,year:i32,month:u32)->Result<Footpr
 					// println!("Prefix: {}",pf);
 					match name.local_name.as_str() {
 					    "entry" if q == State::Entry => {
+						fp.instrument = "TROPOMI".to_string();
+						fp.platform = "Sentinel-5P".to_string();
+						fp.time_interval = (obs_start,obs_end);
 						footprints.push(fp.clone());
 						fp = Footprint::new();
 						q = State::Init;
@@ -428,16 +427,13 @@ fn process(cfg:&Config)->Result<(),Box<dyn Error>> {
 		    let mut tmp_bin_path = path.clone();
 		    tmp_bin_path.push(&format!("{}-{:03}.mpk",sname,k));
 
-		    let fd = File::create(&tmp_bin_path)?;
-		    let mut buf = BufWriter::new(fd);
-		    fps.serialize(&mut rmp_serde::Serializer::new(&mut buf))?;
-
+		    fps.save_to_file(&tmp_bin_path)?;
 		    std::fs::rename(tmp_bin_path,bin_path)?;
 
 		    if cfg.draw_footprints {
 			let mut svg_path = path.clone();
 			svg_path.push(&format!("{}-{:03}.svg",sname,k));
-			draw_footprints(&fps,&svg_path)?;
+			fps.draw(&svg_path)?;
 		    }
 		}
 
