@@ -1,6 +1,6 @@
-use std::path::{Path,PathBuf};
+use std::path::Path;
 use std::fs::File;
-use std::io::{Read,Write,BufWriter};
+use std::io::{Write,BufWriter};
 use std::error::Error;
 
 pub struct MiniSVG {
@@ -69,6 +69,7 @@ impl MiniSVG {
 	self.stroke = stroke;
     }
 
+    #[allow(dead_code)]
     pub fn set_fill(&mut self,fill:Option<u32>) {
 	self.fill = fill;
     }

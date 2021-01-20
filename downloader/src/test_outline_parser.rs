@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod outline_parser;
 
 pub fn main() {

@@ -1,50 +1,16 @@
 mod misc_error;
 mod outline_parser;
 mod minisvg;
+mod footprint;
 
 use misc_error::MiscError;
 use std::error::Error;
 use url::Url;
 use xml::reader::{EventReader,XmlEvent};
 use minisvg::MiniSVG;
+use footprint::Footprint;
 
-#[derive(Debug,Clone)]
-pub struct Footprint {
-    orbit:usize,
-    id:String,
-    outline:Vec<Vec<Vec<(f64,f64)>>>
-}
-
-impl Footprint {
-    pub fn new()->Self {
-	Self{
-	    orbit:0,
-	    id:String::new(),
-	    outline:Vec::new()
-	}
-    }
-
-    pub fn clear(&mut self) {
-	self.orbit = 0;
-	self.id.clear();
-	self.outline.clear();
-    }
-
-    pub fn set_orbit(&mut self,orbit:usize) {
-	self.orbit = orbit;
-    }
-
-    pub fn set_outline(&mut self,outline:&Vec<Vec<Vec<(f64,f64)>>>) {
-	self.outline = outline.to_vec();
-    }
-
-    pub fn set_id(&mut self,id:&str) {
-	self.id = id.to_string();
-    }
-}
-
-#[tokio::main]
-async fn main()->Result<(),Box<dyn Error>> {
+async fn main_s5p()->Result<(),Box<dyn Error>> {
     let mut url = Url::parse("https://s5phub.copernicus.eu/dhus/search")?;
     let query = "platformname:Sentinel-5 AND producttype:L1B_RA_BD7 AND processinglevel:L1B AND processingmode:Offline AND beginPosition:[2019-05-18T00:00:00.000Z TO 2019-05-19T23:59:59.999Z]";
     //orbitnumber:15839";
@@ -176,4 +142,14 @@ async fn main()->Result<(),Box<dyn Error>> {
 	}
     }
     Ok(())
+}
+
+//#[tokio::main]
+
+fn main()->Result<(),Box<dyn Error>> {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(main_s5p())
 }
