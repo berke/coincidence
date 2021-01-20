@@ -3,14 +3,18 @@ mod outline_parser;
 mod minisvg;
 mod footprint;
 
+use ron::de::from_reader;
+use serde::Deserialize;
 use misc_error::MiscError;
 use std::error::Error;
 use std::path::Path;
 use url::Url;
 use xml::reader::{EventReader,XmlEvent};
-use chrono::DateTime;
+use chrono::{NaiveDate,NaiveDateTime,Datelike,DateTime,Duration,SecondsFormat,Utc,TimeZone};
 use minisvg::MiniSVG;
 use footprint::Footprint;
+
+use self::config::Config;
 
 fn draw_footprints<P:AsRef<Path>>(footprints:&Vec<Footprint>,path:P)->Result<(),Box<dyn Error>> {
     let n_footprint = footprints.len();
@@ -32,12 +36,33 @@ fn draw_footprints<P:AsRef<Path>>(footprints:&Vec<Footprint>,path:P)->Result<(),
     Ok(())
 }
 
-async fn main_s5p()->Result<(),Box<dyn Error>> {
-    let mut url = Url::parse("https://s5phub.copernicus.eu/dhus/search")?;
-    let query = "platformname:Sentinel-5 AND producttype:L1B_RA_BD7 AND processinglevel:L1B AND processingmode:Offline AND beginPosition:[2019-05-18T00:00:00.000Z TO 2019-05-19T23:59:59.999Z]";
+fn next_month(d:&DateTime<Utc>)->DateTime<Utc> {
+    let nd = d.naive_utc().date();
+    let mut nd1 = nd;
+    while nd1.month() == nd.month() {
+	nd1 = nd1.succ();
+    }
+    let d1 = nd1.and_hms(0,0,0);
+    DateTime::<Utc>::from_utc(d1,Utc)
+}
+
+async fn process_tropomi(cfg:&config::Tropomi,year:i32,month:u32)->Result<(),Box<dyn Error>> {
+    let mut url = Url::parse(&cfg.base_url)?;
+
+    let t_start = Utc.ymd(year,month,1).and_hms(0,0,0);
+    let t_end = next_month(&t_start) - Duration::milliseconds(1);
+    let query = format!("platformname:{} AND producttype:{} AND processingmode:{} AND beginposition:[{} TO {}]",
+			cfg.platform_name,
+			cfg.product_type,
+			cfg.processing_mode,
+			t_start.to_rfc3339_opts(SecondsFormat::Millis,true),
+			t_end.to_rfc3339_opts(SecondsFormat::Millis,true));
+    // let query = "platformname:Sentinel-5 AND producttype:L1B_RA_BD7 AND processinglevel:L1B AND processingmode:Offline AND beginPosition:[2019-05-18T00:00:00.000Z TO 2019-05-19T23:59:59.999Z]";
     //orbitnumber:15839";
-    MiscError::convert(url.set_username("s5pguest"),"Cannot set user name")?;
-    MiscError::convert(url.set_password(Some("s5pguest")),"Cannot set password")?;
+    MiscError::convert(url.set_username(&cfg.user_name),"Cannot set user name")?;
+    if let Some(pwd) = &cfg.password {
+	MiscError::convert(url.set_password(Some(&pwd)),"Cannot set password")?;
+    }
     url.query_pairs_mut().append_pair("q",&query);
     let resp = reqwest::get(url)
 	.await?
@@ -145,6 +170,7 @@ async fn main_s5p()->Result<(),Box<dyn Error>> {
 	}
     }
     draw_footprints(&footprints,"out.svg")?;
+    println!("{:?}",footprints);
     Ok(())
 }
 
@@ -154,6 +180,45 @@ fn split_once(u:&str,sep:char)->Option<(&str,&str)> {
 	Some((u[0],u[1]))
     } else {
 	None
+    }
+}
+
+mod config {
+    use serde::Deserialize;
+    
+    #[derive(Clone,Debug,Deserialize)]
+    pub struct Config {
+	pub draw_footprints:bool,
+	pub out_path:String,
+	pub jobs:Vec<Job>
+    }
+
+    #[derive(Clone,Debug,Deserialize)]
+    pub struct Job {
+	pub year_month_range:((i32,u32),(i32,u32)),
+	pub sources:Vec<Source>
+    }
+
+    #[derive(Clone,Debug,Deserialize)]
+    pub enum Source {
+	Tropomi(Tropomi),
+	IASI(IASI)
+    }
+
+    #[derive(Clone,Debug,Deserialize)]
+    pub struct Tropomi {
+	pub base_url:String,
+	pub platform_name:String,
+	pub product_type:String,
+	pub processing_mode:String,
+	pub user_name:String,
+	pub password:Option<String>
+    }
+
+    #[derive(Clone,Debug,Deserialize)]
+    pub struct IASI {
+	pub base_url:String,
+	pub collection:String
     }
 }
 
@@ -235,7 +300,7 @@ async fn main_metop()->Result<(),Box<dyn Error>> {
 	}
     }
 
-    let max_product = 1;
+    let max_product = 10;
     let mut n_product = 0;
     let mut footprints = Vec::new();
     for (id,url) in products.iter() {
@@ -244,32 +309,81 @@ async fn main_metop()->Result<(),Box<dyn Error>> {
 	    .text()
 	    .await?;
 	let obj = json::parse(&resp)?;
-	let fp = convert_eumetsat_product(id,&obj)?;
-	footprints.push(fp);
-	n_product += 1;
-	if n_product >= max_product {
-	    break;
+	match convert_eumetsat_product(id,&obj) {
+	    Ok(fp) => {
+		footprints.push(fp);
+		n_product += 1;
+		if n_product >= max_product {
+		    break;
+		}
+	    },
+	    Err(e) => {
+		println!("Error processing {}: {}",
+			 id,
+			 e);
+	    }
 	}
     }
     draw_footprints(&footprints,"out.svg")?;
+    println!("{:?}",footprints);
+    Ok(())
+}
+
+// fn main()->Result<(),Box<dyn Error>> {
+//     let instr = std::env::args().nth(1).expect("Specify instrument: tropomi or iasi");
+//     match instr.as_str() {
+// 	"tropomi" =>
+// 	    tokio::runtime::Builder::new_multi_thread()
+// 	    .enable_all()
+// 	    .build()
+// 	    .unwrap()
+// 	    .block_on(main_s5p()),
+// 	"iasi" =>
+// 	    tokio::runtime::Builder::new_multi_thread()
+// 	    .enable_all()
+// 	    .build()
+// 	    .unwrap()
+// 	    .block_on(main_metop()),
+// 	_ => Err(Box::new(MiscError::new(&format!("Invalid instrument {}",instr))))
+//     }
+// }
+
+fn process(cfg:&Config)->Result<(),Box<dyn Error>> {
+    use config::{Job,Source,Tropomi,IASI};
+    
+    let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
+
+    for job in cfg.jobs.iter() {
+	let &Job{ year_month_range:((y0,m0),(y1,m1)),ref sources } = job;
+
+	let mut y = y0;
+	let mut m = m0;
+	loop {
+	    if y > y1 || (y == y1 && m > m1) {
+		break;
+	    }
+	    println!("Processing {:04}-{:02}...",y,m);
+
+	    for s in sources.iter() {
+		match s {
+		    Source::Tropomi(trop) => runtime.block_on(process_tropomi(trop,y,m))?,
+		    Source::IASI(iasi) => { }
+		}
+	    }
+
+	    m += 1;
+	    if m == 13 {
+		m = 1;
+		y += 1;
+	    }
+	}
+    }
     Ok(())
 }
 
 fn main()->Result<(),Box<dyn Error>> {
-    let instr = std::env::args().nth(1).expect("Specify instrument: tropomi or iasi");
-    match instr.as_str() {
-	"tropomi" =>
-	    tokio::runtime::Builder::new_multi_thread()
-	    .enable_all()
-	    .build()
-	    .unwrap()
-	    .block_on(main_s5p()),
-	"iasi" =>
-	    tokio::runtime::Builder::new_multi_thread()
-	    .enable_all()
-	    .build()
-	    .unwrap()
-	    .block_on(main_metop()),
-	_ => Err(Box::new(MiscError::new(&format!("Invalid instrument {}",instr))))
-    }
+    let cfg_fn = MiscError::from_option(std::env::args().nth(1),"Specify path to configuration file")?;
+    let fd = std::fs::File::open(cfg_fn)?;
+    let cfg : Config = from_reader(fd)?;
+    process(&cfg)
 }
