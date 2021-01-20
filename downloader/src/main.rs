@@ -28,9 +28,10 @@ async fn main_s5p()->Result<(),Box<dyn Error>> {
     enum State { Init,Entry,Footprint,OrbitNumber,Identifier }
     let mut q = State::Init;
     let mut footprints = Vec::new();
-    let mut fp = Footprint::new();
+    let mut fp;
     let mut elems = Vec::new();
     loop {
+	fp = Footprint::new();
 	match ev.next() {
 	    Ok(e) => {
 		println!("q={:?} EV {:?}",q,e);
@@ -155,6 +156,67 @@ fn split_once(u:&str,sep:char)->Option<(&str,&str)> {
     }
 }
 
+fn convert_eumetsat_product(id:&str,obj:&json::JsonValue)->Result<Footprint,Box<dyn Error>> {
+    let geo = &obj["geometry"];
+    if let Some("MultiPolygon") = geo["type"].as_str() {
+	let mut outline = Vec::new();
+	for a in geo["coordinates"].members() {
+	    let mut polygon = Vec::new();
+	    for b in a.members() {
+		let mut ring : Vec<(f64,f64)> = Vec::new();
+		for c in b.members() {
+		    let x : f64 = MiscError::from_option(c[0].as_f64(),"Cannot get longitude")?;
+		    let y : f64 = MiscError::from_option(c[1].as_f64(),"Cannot get latitude")?;
+		    ring.push((x,y));
+		}
+		polygon.push(ring);
+	    }
+	    outline.push(polygon);
+	}
+	let props = &obj["properties"];
+	if let Some(date) = props["date"].as_str() {
+	    if let Some((obs_start,obs_end)) = split_once(date,'/') {
+	    	let obs_start = DateTime::parse_from_rfc3339(obs_start)?.timestamp() as f64;
+	    	let obs_end = DateTime::parse_from_rfc3339(obs_end)?.timestamp() as f64;
+		let acqi = &props["acquisitionInformation"][0];
+    		if let Some(platform) = acqi["platform"]["platformShortName"].as_str() {
+		    if let Some(instrument) = acqi["instrument"]["instrumentShortName"].as_str() {
+			Ok(Footprint {
+			    orbit:0,
+			    id:id.to_string(),
+			    platform:platform.to_string(),
+			    instrument:instrument.to_string(),
+			    time_interval:(obs_start,obs_end),
+			    outline
+			})
+		    } else {
+			MiscError::boxed("Cannot determine instrument")
+		    }
+		} else {
+		    MiscError::boxed("Cannot determine platform")
+		}
+	    } else {
+		MiscError::boxed("Cannot split date")
+	    }
+	} else {
+	    MiscError::boxed("Invalid date")
+	}
+    } else {
+	MiscError::boxed("Geometry type undefined or not MultiPolygon")
+    }
+    // } else {
+    // 		} else {
+    // 		    println!("No platform for {}",id);
+    // 		}
+    // 	    } else {
+    // 		println!("Cannot split date for {}",id);
+    // 	    }
+    // 	} else {
+    // 	    println!("No date for {}",id);
+    // 	}
+    // }
+}
+
 async fn main_metop()->Result<(),Box<dyn Error>> {
     let cat = "EO%3AEUM%3ADAT%3AMETOP%3AIASIL1C-ALL";
     let mut url = Url::parse(&format!("https://api.eumetsat.int/data/browse/collections/{}",cat))?;
@@ -185,39 +247,48 @@ async fn main_metop()->Result<(),Box<dyn Error>> {
 
     let max_product = 1;
     let mut n_product = 0;
+    let mut footprints = Vec::new();
     for (id,url) in products.iter() {
 	let resp = reqwest::get(url)
 	    .await?
 	    .text()
 	    .await?;
 	let obj = json::parse(&resp)?;
-	let props = &obj["properties"];
-	if let Some(date) = props["date"].as_str() {
-	    if let Some((obs_start,obs_end)) = split_once(date,'/') {
-		let obs_start = DateTime::parse_from_rfc3339(obs_start)?.timestamp() as f64;
-		let obs_end = DateTime::parse_from_rfc3339(obs_end)?.timestamp() as f64;
-		if let Some(platform) = props["acquisitionInformation"][0]["platform"]["platformShortName"].as_str()
-		{
-		    println!("{} {} {} {} {}",
-			     id,
-			     platform,
-			     obs_start,
-			     obs_end,
-			     url);
-		} else {
-		    println!("No platform for {}",id);
-		}
-	    } else {
-		println!("Cannot split date for {}",id);
-	    }
-	} else {
-	    println!("No date for {}",id);
-	}
+	// let geo = &obj["geometry"];
+	let fp = convert_eumetsat_product(id,&obj)?;
+	footprints.push(fp);
+	// // if let Some("MultiPolygon") = geo["type"].as_str() {
+	// // } else {
+	// //     println!(""
+	// // }
+	// let props = &obj["properties"];
+	// if let Some(date) = props["date"].as_str() {
+	//     if let Some((obs_start,obs_end)) = split_once(date,'/') {
+	// 	let obs_start = DateTime::parse_from_rfc3339(obs_start)?.timestamp() as f64;
+	// 	let obs_end = DateTime::parse_from_rfc3339(obs_end)?.timestamp() as f64;
+	// 	if let Some(platform) = props["acquisitionInformation"][0]["platform"]["platformShortName"].as_str()
+	// 	{
+	// 	    println!("{} {} {} {} {}",
+	// 		     id,
+	// 		     platform,
+	// 		     obs_start,
+	// 		     obs_end,
+	// 		     url);
+	// 	} else {
+	// 	    println!("No platform for {}",id);
+	// 	}
+	//     } else {
+	// 	println!("Cannot split date for {}",id);
+	//     }
+	// } else {
+	//     println!("No date for {}",id);
+	// }
 	n_product += 1;
 	if n_product >= max_product {
 	    break;
 	}
     }
+    println!("FOOTPRINTS:\n{:?}",footprints);
     Ok(())
 }
 
