@@ -97,7 +97,7 @@ async fn process_tropomi(cfg:&config::Tropomi,year:i32,month:u32)->Result<Footpr
 		    match (q,e) {
 			(_,XmlEvent::StartElement{ name, attributes, namespace }) => {
 			    elems.push((name.clone(),namespace.clone()));
-			    if let Some(pf) = namespace.get("opensearch") {
+			    if let Some(_pf) = namespace.get("opensearch") {
 				//println!("Prefix: {}",pf);
 				match name.local_name.as_str() {
 				    "entry" if q == State::Init => {
@@ -203,8 +203,10 @@ async fn process_tropomi(cfg:&config::Tropomi,year:i32,month:u32)->Result<Footpr
 	}
 	start_row += items_per_page.unwrap_or(10);
 	n_url += 1;
-	if n_url > cfg.limit {
-	    break;
+	if let Some(lim) = cfg.limit {
+	    if n_url > lim {
+		break;
+	    }
 	}
     }
     Ok(Footprints{ footprints })
@@ -241,6 +243,15 @@ mod config {
 	IASI(IASI)
     }
 
+    impl Source {
+	pub fn short_name(&self)->&str {
+	    match self {
+		Self::Tropomi(_) => "tropomi",
+		Self::IASI(_) => "iasi"
+	    }
+	}
+    }
+
     #[derive(Clone,Debug,Deserialize)]
     pub struct Tropomi {
 	pub base_url:String,
@@ -249,14 +260,14 @@ mod config {
 	pub processing_mode:String,
 	pub user_name:String,
 	pub password:Option<String>,
-	pub limit:usize
+	pub limit:Option<usize>
     }
 
     #[derive(Clone,Debug,Deserialize)]
     pub struct IASI {
 	pub base_url:String,
 	pub collection:String,
-	pub limit:usize
+	pub limit:Option<usize>
     }
 }
 
@@ -373,10 +384,11 @@ async fn process_iasi(cfg:&config::IASI,year:i32,month:u32)->Result<Footprints,B
 		eprintln!("Error processing {}: {}, url was {}",id,e,url);
 	    }
 	}
-
 	n_url += 1;
-	if n_url > cfg.limit {
-	    break;
+	if let Some(lim) = cfg.limit {
+	    if n_url > lim {
+		break;
+	    }
 	}
     }
     Ok(Footprints{ footprints })
@@ -397,29 +409,39 @@ fn process(cfg:&Config)->Result<(),Box<dyn Error>> {
 		break;
 	    }
 	    println!("Processing {:04}-{:02}...",y,m);
+	    let mut path = PathBuf::from(&cfg.out_path);
+	    path.push(&format!("{:04}-{:02}",y,m));
+	    std::fs::create_dir_all(&path)?;
 
 	    let mut k = 0;
 	    for s in sources.iter() {
-		let (fps,sname) =
-		    match s {
-			Source::Tropomi(trop) => (runtime.block_on(process_tropomi(trop,y,m))?,"tropomi"),
-			Source::IASI(iasi) => (runtime.block_on(process_iasi(iasi,y,m))?,"iasi")
-		    };
-		let mut path = PathBuf::from(&cfg.out_path);
-		path.push(&format!("{:04}-{:02}",y,m));
-		std::fs::create_dir_all(&path)?;
-
+		let sname = s.short_name();
 		let mut bin_path = path.clone();
 		bin_path.push(&format!("{}-{:03}.mpk",sname,k));
 
-		let fd = File::create(&bin_path)?;
-		let mut buf = BufWriter::new(fd);
-		fps.serialize(&mut rmp_serde::Serializer::new(&mut buf))?;
+		if bin_path.exists() {
+		    println!("Path {:?} already downloaded",bin_path);
+		} else {
+		    let fps =
+			match s {
+			    Source::Tropomi(trop) => runtime.block_on(process_tropomi(trop,y,m))?,
+			    Source::IASI(iasi) => runtime.block_on(process_iasi(iasi,y,m))?
+			};
 
-		if cfg.draw_footprints {
-		    let mut svg_path = path.clone();
-		    svg_path.push(&format!("{}-{:03}.svg",sname,k));
-		    draw_footprints(&fps,&svg_path)?;
+		    let mut tmp_bin_path = path.clone();
+		    tmp_bin_path.push(&format!("{}-{:03}.mpk",sname,k));
+
+		    let fd = File::create(&tmp_bin_path)?;
+		    let mut buf = BufWriter::new(fd);
+		    fps.serialize(&mut rmp_serde::Serializer::new(&mut buf))?;
+
+		    std::fs::rename(tmp_bin_path,bin_path)?;
+
+		    if cfg.draw_footprints {
+			let mut svg_path = path.clone();
+			svg_path.push(&format!("{}-{:03}.svg",sname,k));
+			draw_footprints(&fps,&svg_path)?;
+		    }
 		}
 
 		k += 1;
