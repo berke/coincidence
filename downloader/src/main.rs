@@ -144,12 +144,41 @@ async fn main_s5p()->Result<(),Box<dyn Error>> {
     Ok(())
 }
 
+async fn main_metop()->Result<(),Box<dyn Error>> {
+    let cat = "EO%3AEUM%3ADAT%3AMETOP%3AIASIL1C-ALL";
+    let mut url = Url::parse(&format!("https://api.eumetsat.int/data/browse/collections/{}",cat))?;
+    let year : u32 = 2019;
+    let month : u32 = 06;
+    url.path_segments_mut()
+	.map_err(|_| "This URL cannot be a base")?
+	.extend(&["dates",&format!("{:04}",year),&format!("{:02}",month), "products"]);
+    url.query_pairs_mut().append_pair("format","json");
+    println!("Requesting URL {}",url.as_str());
+    let resp = reqwest::get(url)
+    	.await?
+    	.text()
+    	.await?;
+    println!("RESP: {:?}",resp);
+    Ok(())
+}
+
 //#[tokio::main]
 
 fn main()->Result<(),Box<dyn Error>> {
-    tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .unwrap()
-        .block_on(main_s5p())
+    let instr = std::env::args().nth(1).expect("Specify instrument: tropomi or iasi");
+    match instr.as_str() {
+	"tropomi" =>
+	    tokio::runtime::Builder::new_multi_thread()
+	    .enable_all()
+	    .build()
+	    .unwrap()
+	    .block_on(main_s5p()),
+	"iasi" =>
+	    tokio::runtime::Builder::new_multi_thread()
+	    .enable_all()
+	    .build()
+	    .unwrap()
+	    .block_on(main_metop()),
+	_ => Err(Box::new(MiscError::new(&format!("Invalid instrument {}",instr))))
+    }
 }

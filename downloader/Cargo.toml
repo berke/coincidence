@@ -15,6 +15,7 @@ url = { version = "^2.2" }
 xml-rs = { version = "0.8" }
 regex = { version = "1" }
 nom = { version = "6" }
+# percent-encoding = { version = "^2.1" }
 
 [[bin]]
 name = "test_outline_parser"
