@@ -7,6 +7,7 @@ use misc_error::MiscError;
 use std::error::Error;
 use url::Url;
 use xml::reader::{EventReader,XmlEvent};
+use chrono::DateTime;
 use minisvg::MiniSVG;
 use footprint::Footprint;
 
@@ -144,6 +145,16 @@ async fn main_s5p()->Result<(),Box<dyn Error>> {
     Ok(())
 }
 
+
+fn split_once(u:&str,sep:char)->Option<(&str,&str)> {
+    let u : Vec<&str> = u.splitn(2,sep).collect();
+    if u.len() == 2 {
+	Some((u[0],u[1]))
+    } else {
+	None
+    }
+}
+
 async fn main_metop()->Result<(),Box<dyn Error>> {
     let cat = "EO%3AEUM%3ADAT%3AMETOP%3AIASIL1C-ALL";
     let mut url = Url::parse(&format!("https://api.eumetsat.int/data/browse/collections/{}",cat))?;
@@ -159,10 +170,56 @@ async fn main_metop()->Result<(),Box<dyn Error>> {
     	.text()
     	.await?;
     println!("RESP: {:?}",resp);
+    let obj = json::parse(&resp)?;
+    let mut products : Vec<(String,String)> = Vec::new();
+    for prod in obj["products"].members() {
+	if let Some(id) = prod["id"].as_str() {
+	    println!("{}",id);
+	    for lk in prod["links"].members() {
+		if let Some(url) = lk["href"].as_str() {
+		    products.push((id.to_string(),url.to_string()));
+		}
+	    }
+	}
+    }
+
+    let max_product = 1;
+    let mut n_product = 0;
+    for (id,url) in products.iter() {
+	let resp = reqwest::get(url)
+	    .await?
+	    .text()
+	    .await?;
+	let obj = json::parse(&resp)?;
+	let props = &obj["properties"];
+	if let Some(date) = props["date"].as_str() {
+	    if let Some((obs_start,obs_end)) = split_once(date,'/') {
+		let obs_start = DateTime::parse_from_rfc3339(obs_start)?.timestamp() as f64;
+		let obs_end = DateTime::parse_from_rfc3339(obs_end)?.timestamp() as f64;
+		if let Some(platform) = props["acquisitionInformation"][0]["platform"]["platformShortName"].as_str()
+		{
+		    println!("{} {} {} {} {}",
+			     id,
+			     platform,
+			     obs_start,
+			     obs_end,
+			     url);
+		} else {
+		    println!("No platform for {}",id);
+		}
+	    } else {
+		println!("Cannot split date for {}",id);
+	    }
+	} else {
+	    println!("No date for {}",id);
+	}
+	n_product += 1;
+	if n_product >= max_product {
+	    break;
+	}
+    }
     Ok(())
 }
-
-//#[tokio::main]
 
 fn main()->Result<(),Box<dyn Error>> {
     let instr = std::env::args().nth(1).expect("Specify instrument: tropomi or iasi");
