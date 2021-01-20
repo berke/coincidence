@@ -3,9 +3,8 @@ mod outline_parser;
 mod minisvg;
 mod footprint;
 
-use serde::{Serialize,Deserialize};
+use serde::Serialize;
 use ron::de::from_reader;
-use rmp_serde::Serializer;
 use misc_error::MiscError;
 use std::error::Error;
 use std::path::{Path,PathBuf};
@@ -13,13 +12,14 @@ use std::fs::File;
 use std::io::BufWriter;
 use url::Url;
 use xml::reader::{EventReader,XmlEvent};
-use chrono::{NaiveDate,NaiveDateTime,Datelike,DateTime,Duration,SecondsFormat,Utc,TimeZone};
+use chrono::{Datelike,DateTime,Duration,SecondsFormat,Utc,TimeZone};
 use minisvg::MiniSVG;
 use footprint::{Footprint,Footprints};
 
 use self::config::Config;
 
-fn draw_footprints<P:AsRef<Path>>(footprints:&Vec<Footprint>,path:P)->Result<(),Box<dyn Error>> {
+fn draw_footprints<P:AsRef<Path>>(fps:&Footprints,path:P)->Result<(),Box<dyn Error>> {
+    let Footprints{ footprints } = fps;
     let n_footprint = footprints.len();
     println!("Number of footprints found: {}",n_footprint);
     let mut ms = MiniSVG::new(path,360.0,180.0)?;
@@ -50,130 +50,163 @@ fn next_month(d:&DateTime<Utc>)->DateTime<Utc> {
 }
 
 async fn process_tropomi(cfg:&config::Tropomi,year:i32,month:u32)->Result<Footprints,Box<dyn Error>> {
-    let mut url = Url::parse(&cfg.base_url)?;
-
-    let t_start = Utc.ymd(year,month,1).and_hms(0,0,0);
-    let t_end = next_month(&t_start) - Duration::milliseconds(1);
-    let query = format!("platformname:{} AND producttype:{} AND processingmode:{} AND beginposition:[{} TO {}]",
-			cfg.platform_name,
-			cfg.product_type,
-			cfg.processing_mode,
-			t_start.to_rfc3339_opts(SecondsFormat::Millis,true),
-			t_end.to_rfc3339_opts(SecondsFormat::Millis,true));
-    // let query = "platformname:Sentinel-5 AND producttype:L1B_RA_BD7 AND processinglevel:L1B AND processingmode:Offline AND beginPosition:[2019-05-18T00:00:00.000Z TO 2019-05-19T23:59:59.999Z]";
-    //orbitnumber:15839";
-    MiscError::convert(url.set_username(&cfg.user_name),"Cannot set user name")?;
-    if let Some(pwd) = &cfg.password {
-	MiscError::convert(url.set_password(Some(&pwd)),"Cannot set password")?;
-    }
-    url.query_pairs_mut().append_pair("q",&query);
-    let resp = reqwest::get(url)
-	.await?
-	.text()
-	.await?;
-    println!("RESP: {:?}",resp);
-    let mut ev = EventReader::from_str(&resp);
     #[derive(Copy,Clone,PartialEq,Eq,Debug)]
-    enum State { Init,Entry,Footprint,OrbitNumber,Identifier }
-    let mut q = State::Init;
+    enum State { Init,Entry,Footprint,OrbitNumber,Identifier,TotalResults,ItemsPerPage }
+
+    let mut total_results = None;
+    let mut start_row = 0;
     let mut footprints = Vec::new();
-    let mut fp = Footprint::new();
-    let mut elems = Vec::new();
+    let mut n_url = 0;
     loop {
-	match ev.next() {
-	    Ok(e) => {
-		println!("q={:?} EV {:?}",q,e);
-		match (q,e) {
-		    (_,XmlEvent::StartElement{ name, attributes, namespace }) => {
-			elems.push((name.clone(),namespace.clone()));
-			if let Some(pf) = namespace.get("opensearch") {
-			    println!("Prefix: {}",pf);
-			    match name.local_name.as_str() {
-				"entry" if q == State::Init => {
-				    q = State::Entry
-				},
-				"str" if q == State::Entry => {
-				    if let Some(a) = attributes.iter().find(|&a| a.name.local_name == "name") {
-					match a.value.as_str() {
-					    "footprint" => q = State::Footprint,
-					    "identifier" => q = State::Identifier,
-					    _ => ()
-					}
-				    }
-				},
-				"int" if q == State::Entry => {
-				    if let Some(_) = namespace.get("opensearch") {
-					if let Some(a) = attributes.iter().find(|&a| a.name.local_name == "name") {
-					    match a.value.as_str() {
-						"orbitnumber" => q = State::OrbitNumber,
-						_ => ()
-					    }
-					}
-				    }
-				}
-				ln => {
-				    println!("Unhandled name {}",ln);
-				}
-			    }
-			} else {
-			    println!("NAME {:?}",name);
-			    println!("ATTR {:?}",attributes);
-			    println!("NAMESPACE {:?}",namespace);
-			}
-		    },
-		    (State::Footprint,XmlEvent::Characters(u)) => {
-			println!("OUTLINE: {}",u);
-			if let Some(out) = outline_parser::parse_multipolygon(&u) {
-			    fp.outline = out;
-			    q = State::Entry;
-			} else {
-			    println!("ERROR: Cannot parse outline");
-			}
-		    },
-		    (State::Identifier,XmlEvent::Characters(u)) => {
-			println!("ID: {}",u);
-			fp.id = u;
-			q = State::Entry;
-		    },
-		    (State::OrbitNumber,XmlEvent::Characters(u)) => {
-			let num : usize = u.parse().unwrap();
-			println!("ORBNUM: {}",num);
-			fp.orbit = num;
-			q = State::Entry;
-		    },
-		    (State::Entry,XmlEvent::EndElement{ name }) => {
-			if let Some((name2,namespace)) = elems.pop() {
-			    if name == name2 {
-				if let Some(pf) = namespace.get("opensearch") {
-				    println!("Prefix: {}",pf);
-				    match name.local_name.as_str() {
-					"entry" if q == State::Entry => {
-					    footprints.push(fp.clone());
-					    fp = Footprint::new();
-					    q = State::Init;
-					},
-					_ => ()
-				    }
-				}
-			    } else {
-				println!("ERROR: Mismatched name {} vs {}",name,name2);
-			    }
-			} else {
-			    println!("ERROR: Stack empty");
-			}
-		    },
-		    (_,XmlEvent::EndDocument) => break,
-		    _ => ()
-		}
-	    },
-	    Err(e) => {
-		println!("ERR: {}",e);
+	println!("Processing from row {} out of {:?}",start_row,total_results);
+	if let Some(tr) = total_results {
+	    if start_row >= tr {
+		println!("Reached end");
 		break;
 	    }
 	}
+	let mut url = Url::parse(&cfg.base_url)?;
+	let t_start = Utc.ymd(year,month,1).and_hms(0,0,0);
+	let t_end = next_month(&t_start) - Duration::milliseconds(1);
+	let query = format!("platformname:{} AND producttype:{} AND processingmode:{} AND beginposition:[{} TO {}]",
+			    cfg.platform_name,
+			    cfg.product_type,
+			    cfg.processing_mode,
+			    t_start.to_rfc3339_opts(SecondsFormat::Millis,true),
+			    t_end.to_rfc3339_opts(SecondsFormat::Millis,true));
+	MiscError::convert(url.set_username(&cfg.user_name),"Cannot set user name")?;
+	if let Some(pwd) = &cfg.password {
+	    MiscError::convert(url.set_password(Some(&pwd)),"Cannot set password")?;
+	}
+	url.query_pairs_mut().append_pair("q",&query).append_pair("start",&format!("{}",start_row));
+	println!("Querying URL: {}",url);
+	let resp = reqwest::get(url)
+	    .await?
+	    .text()
+	    .await?;
+	// println!("RESP: {:?}",resp);
+	let mut ev = EventReader::from_str(&resp);
+	let mut q = State::Init;
+	let mut fp = Footprint::new();
+	let mut elems = Vec::new();
+	let mut items_per_page = None;
+	loop {
+	    match ev.next() {
+		Ok(e) => {
+		    //println!("q={:?} EV {:?}",q,e);
+		    match (q,e) {
+			(_,XmlEvent::StartElement{ name, attributes, namespace }) => {
+			    elems.push((name.clone(),namespace.clone()));
+			    if let Some(pf) = namespace.get("opensearch") {
+				//println!("Prefix: {}",pf);
+				match name.local_name.as_str() {
+				    "entry" if q == State::Init => {
+					q = State::Entry
+				    },
+				    "str" if q == State::Entry => {
+					if let Some(a) = attributes.iter().find(|&a| a.name.local_name == "name") {
+					    match a.value.as_str() {
+						"footprint" => q = State::Footprint,
+						"identifier" => q = State::Identifier,
+						_ => ()
+					    }
+					}
+				    },
+				    "int" if q == State::Entry => {
+					if let Some(_) = namespace.get("opensearch") {
+					    if let Some(a) = attributes.iter().find(|&a| a.name.local_name == "name") {
+						match a.value.as_str() {
+						    "orbitnumber" => q = State::OrbitNumber,
+						    _ => ()
+						}
+					    }
+					}
+				    },
+				    "totalResults" if q == State::Init => {
+					q = State::TotalResults;
+				    },
+				    "itemsPerPage" if q == State::Init => {
+					q = State::ItemsPerPage;
+				    },
+				    ln => {
+					eprintln!("Unhandled name {}",ln);
+				    }
+				}
+			    } else {
+				// println!("NAME {:?}",name);
+				// println!("ATTR {:?}",attributes);
+				// println!("NAMESPACE {:?}",namespace);
+			    }
+			},
+			(State::TotalResults,XmlEvent::Characters(u)) => {
+			    let ntr : usize = u.parse().unwrap();
+			    total_results = Some(ntr);
+			    println!("Total results: {}",ntr);
+			    q = State::Init;
+			},
+			(State::ItemsPerPage,XmlEvent::Characters(u)) => {
+			    let ipp : usize = u.parse().unwrap();
+			    items_per_page = Some(ipp);
+			    println!("Items per page: {}",ipp);
+			    q = State::Init;
+			},
+			(State::Footprint,XmlEvent::Characters(u)) => {
+			    // println!("OUTLINE: {}",u);
+			    if let Some(out) = outline_parser::parse_multipolygon(&u) {
+				fp.outline = out;
+				q = State::Entry;
+			    } else {
+				eprintln!("ERROR: Cannot parse outline");
+			    }
+			},
+			(State::Identifier,XmlEvent::Characters(u)) => {
+			    // println!("ID: {}",u);
+			    fp.id = u;
+			    q = State::Entry;
+			},
+			(State::OrbitNumber,XmlEvent::Characters(u)) => {
+			    let num : usize = u.parse().unwrap();
+			    // println!("ORBNUM: {}",num);
+			    fp.orbit = num;
+			    q = State::Entry;
+			},
+			(State::Entry,XmlEvent::EndElement{ name }) => {
+			    if let Some((name2,namespace)) = elems.pop() {
+				if name == name2 {
+				    if let Some(_pf) = namespace.get("opensearch") {
+					// println!("Prefix: {}",pf);
+					match name.local_name.as_str() {
+					    "entry" if q == State::Entry => {
+						footprints.push(fp.clone());
+						fp = Footprint::new();
+						q = State::Init;
+					    },
+					    _ => ()
+					}
+				    }
+				} else {
+				    eprintln!("ERROR: Mismatched name {} vs {}",name,name2);
+				}
+			    } else {
+				eprintln!("ERROR: Stack empty");
+			    }
+			},
+			(_,XmlEvent::EndDocument) => break,
+			_ => ()
+		    }
+		},
+		Err(e) => {
+		    eprintln!("ERR: {}",e);
+		    break;
+		}
+	    }
+	}
+	start_row += items_per_page.unwrap_or(10);
+	n_url += 1;
+	if n_url > cfg.limit {
+	    break;
+	}
     }
-    // draw_footprints(&footprints,"out.svg")?;
-    // println!("{:?}",footprints);
     Ok(Footprints{ footprints })
 }
 
@@ -191,9 +224,9 @@ mod config {
     
     #[derive(Clone,Debug,Deserialize)]
     pub struct Config {
-	pub draw_footprints:bool,
 	pub out_path:String,
-	pub jobs:Vec<Job>
+	pub jobs:Vec<Job>,
+	pub draw_footprints:bool
     }
 
     #[derive(Clone,Debug,Deserialize)]
@@ -215,86 +248,109 @@ mod config {
 	pub product_type:String,
 	pub processing_mode:String,
 	pub user_name:String,
-	pub password:Option<String>
+	pub password:Option<String>,
+	pub limit:usize
     }
 
     #[derive(Clone,Debug,Deserialize)]
     pub struct IASI {
 	pub base_url:String,
-	pub collection:String
+	pub collection:String,
+	pub limit:usize
     }
 }
 
 fn convert_eumetsat_product(id:&str,obj:&json::JsonValue)->Result<Footprint,Box<dyn Error>> {
+    let mut outline = Vec::new();
+
     let geo = &obj["geometry"];
-    if let Some("MultiPolygon") = geo["type"].as_str() {
-	let mut outline = Vec::new();
-	for a in geo["coordinates"].members() {
-	    let mut polygon = Vec::new();
-	    for b in a.members() {
-		let mut ring : Vec<(f64,f64)> = Vec::new();
-		for c in b.members() {
-		    let x : f64 = MiscError::from_option(c[0].as_f64(),"Cannot get longitude")?;
-		    let y : f64 = MiscError::from_option(c[1].as_f64(),"Cannot get latitude")?;
-		    ring.push((x,y));
-		}
-		polygon.push(ring);
-	    }
-	    outline.push(polygon);
-	}
-	let props = &obj["properties"];
-	if let Some(date) = props["date"].as_str() {
-	    if let Some((obs_start,obs_end)) = split_once(date,'/') {
-	    	let obs_start = DateTime::parse_from_rfc3339(obs_start)?.timestamp() as f64;
-	    	let obs_end = DateTime::parse_from_rfc3339(obs_end)?.timestamp() as f64;
-		let acqi = &props["acquisitionInformation"][0];
-    		if let Some(platform) = acqi["platform"]["platformShortName"].as_str() {
-		    if let Some(instrument) = acqi["instrument"]["instrumentShortName"].as_str() {
-			Ok(Footprint {
-			    orbit:0,
-			    id:id.to_string(),
-			    platform:platform.to_string(),
-			    instrument:instrument.to_string(),
-			    time_interval:(obs_start,obs_end),
-			    outline
-			})
-		    } else {
-			MiscError::boxed("Cannot determine instrument")
+    if let Some(gt) = geo["type"].as_str() {
+	match gt {
+	    "MultiPolygon" => {
+		for a in geo["coordinates"].members() {
+		    let mut polygon = Vec::new();
+		    for b in a.members() {
+			let mut ring : Vec<(f64,f64)> = Vec::new();
+			for c in b.members() {
+			    let x : f64 = MiscError::from_option(c[0].as_f64(),"Cannot get longitude")?;
+			    let y : f64 = MiscError::from_option(c[1].as_f64(),"Cannot get latitude")?;
+			    ring.push((x,y));
+			}
+			polygon.push(ring);
 		    }
-		} else {
-		    MiscError::boxed("Cannot determine platform")
+		    outline.push(polygon);
 		}
-	    } else {
-		MiscError::boxed("Cannot split date")
-	    }
-	} else {
-	    MiscError::boxed("Invalid date")
+	    },
+	    "Polygon" => {
+		let mut outline = Vec::new();
+		let mut polygon = Vec::new();
+		for b in geo["coordinates"].members() {
+		    let mut ring : Vec<(f64,f64)> = Vec::new();
+		    for c in b.members() {
+			let x : f64 = MiscError::from_option(c[0].as_f64(),"Cannot get longitude")?;
+			let y : f64 = MiscError::from_option(c[1].as_f64(),"Cannot get latitude")?;
+			ring.push((x,y));
+		    }
+		    polygon.push(ring);
+		}
+		outline.push(polygon);
+	    },
+	    _ => return MiscError::boxed(&format!("Unsupported geometry type {:?}",gt))
 	}
     } else {
-	MiscError::boxed("Geometry type undefined or not MultiPolygon")
+	return MiscError::boxed("Geometry type undefined")
+    }
+    
+    let props = &obj["properties"];
+    if let Some(date) = props["date"].as_str() {
+	if let Some((obs_start,obs_end)) = split_once(date,'/') {
+	    let obs_start = DateTime::parse_from_rfc3339(obs_start)?.timestamp() as f64;
+	    let obs_end = DateTime::parse_from_rfc3339(obs_end)?.timestamp() as f64;
+	    let acqi = &props["acquisitionInformation"][0];
+	    if let Some(platform) = acqi["platform"]["platformShortName"].as_str() {
+		if let Some(instrument) = acqi["instrument"]["instrumentShortName"].as_str() {
+		    Ok(Footprint {
+			orbit:0,
+			id:id.to_string(),
+			platform:platform.to_string(),
+			instrument:instrument.to_string(),
+			time_interval:(obs_start,obs_end),
+			outline
+		    })
+		} else {
+		    MiscError::boxed("Cannot determine instrument")
+		}
+	    } else {
+		MiscError::boxed("Cannot determine platform")
+	    }
+	} else {
+	    MiscError::boxed("Cannot split date")
+	}
+    } else {
+	MiscError::boxed("Invalid date")
     }
 }
 
-async fn main_metop()->Result<(),Box<dyn Error>> {
-    let cat = "EO%3AEUM%3ADAT%3AMETOP%3AIASIL1C-ALL";
-    let mut url = Url::parse(&format!("https://api.eumetsat.int/data/browse/collections/{}",cat))?;
-    let year : u32 = 2019;
-    let month : u32 = 06;
+async fn process_iasi(cfg:&config::IASI,year:i32,month:u32)->Result<Footprints,Box<dyn Error>> {
+    // There seems to be an issue with percent-encoding of colons in the collection name
+    let mut url = Url::parse(&format!("{}/{}",cfg.base_url,cfg.collection))?;
+    // let year : u32 = 2019;
+    // let month : u32 = 06;
     url.path_segments_mut()
 	.map_err(|_| "This URL cannot be a base")?
 	.extend(&["dates",&format!("{:04}",year),&format!("{:02}",month), "products"]);
     url.query_pairs_mut().append_pair("format","json");
-    println!("Requesting URL {}",url.as_str());
+    // println!("Requesting URL {}",url.as_str());
     let resp = reqwest::get(url)
     	.await?
     	.text()
     	.await?;
-    println!("RESP: {:?}",resp);
+    // println!("RESP: {:?}",resp);
     let obj = json::parse(&resp)?;
     let mut products : Vec<(String,String)> = Vec::new();
     for prod in obj["products"].members() {
 	if let Some(id) = prod["id"].as_str() {
-	    println!("{}",id);
+	    // println!("{}",id);
 	    for lk in prod["links"].members() {
 		if let Some(url) = lk["href"].as_str() {
 		    products.push((id.to_string(),url.to_string()));
@@ -303,9 +359,8 @@ async fn main_metop()->Result<(),Box<dyn Error>> {
 	}
     }
 
-    let max_product = 10;
-    let mut n_product = 0;
     let mut footprints = Vec::new();
+    let mut n_url = 0;
     for (id,url) in products.iter() {
 	let resp = reqwest::get(url)
 	    .await?
@@ -313,46 +368,22 @@ async fn main_metop()->Result<(),Box<dyn Error>> {
 	    .await?;
 	let obj = json::parse(&resp)?;
 	match convert_eumetsat_product(id,&obj) {
-	    Ok(fp) => {
-		footprints.push(fp);
-		n_product += 1;
-		if n_product >= max_product {
-		    break;
-		}
-	    },
+	    Ok(fp) => footprints.push(fp),
 	    Err(e) => {
-		println!("Error processing {}: {}",
-			 id,
-			 e);
+		eprintln!("Error processing {}: {}, url was {}",id,e,url);
 	    }
 	}
+
+	n_url += 1;
+	if n_url > cfg.limit {
+	    break;
+	}
     }
-    draw_footprints(&footprints,"out.svg")?;
-    println!("{:?}",footprints);
-    Ok(())
+    Ok(Footprints{ footprints })
 }
 
-// fn main()->Result<(),Box<dyn Error>> {
-//     let instr = std::env::args().nth(1).expect("Specify instrument: tropomi or iasi");
-//     match instr.as_str() {
-// 	"tropomi" =>
-// 	    tokio::runtime::Builder::new_multi_thread()
-// 	    .enable_all()
-// 	    .build()
-// 	    .unwrap()
-// 	    .block_on(main_s5p()),
-// 	"iasi" =>
-// 	    tokio::runtime::Builder::new_multi_thread()
-// 	    .enable_all()
-// 	    .build()
-// 	    .unwrap()
-// 	    .block_on(main_metop()),
-// 	_ => Err(Box::new(MiscError::new(&format!("Invalid instrument {}",instr))))
-//     }
-// }
-
 fn process(cfg:&Config)->Result<(),Box<dyn Error>> {
-    use config::{Job,Source,Tropomi,IASI};
+    use config::{Job,Source};
     
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
 
@@ -372,16 +403,26 @@ fn process(cfg:&Config)->Result<(),Box<dyn Error>> {
 		let (fps,sname) =
 		    match s {
 			Source::Tropomi(trop) => (runtime.block_on(process_tropomi(trop,y,m))?,"tropomi"),
-			Source::IASI(iasi) => panic!("foo")
+			Source::IASI(iasi) => (runtime.block_on(process_iasi(iasi,y,m))?,"iasi")
 		    };
 		let mut path = PathBuf::from(&cfg.out_path);
 		path.push(&format!("{:04}-{:02}",y,m));
 		std::fs::create_dir_all(&path)?;
-		path.push(&format!("{}-{:03}.mpk",sname,k));
-		k += 1;
-		let fd = File::create(&path)?;
+
+		let mut bin_path = path.clone();
+		bin_path.push(&format!("{}-{:03}.mpk",sname,k));
+
+		let fd = File::create(&bin_path)?;
 		let mut buf = BufWriter::new(fd);
 		fps.serialize(&mut rmp_serde::Serializer::new(&mut buf))?;
+
+		if cfg.draw_footprints {
+		    let mut svg_path = path.clone();
+		    svg_path.push(&format!("{}-{:03}.svg",sname,k));
+		    draw_footprints(&fps,&svg_path)?;
+		}
+
+		k += 1;
 	    }
 
 	    m += 1;
