@@ -55,7 +55,7 @@ impl MiniSVG {
 	Ok(())
     }
 
-    pub fn polygon(&mut self,path:&Vec<(f64,f64)>)->Result<(),Box<dyn Error>> {
+    pub fn simple_polygon(&mut self,path:&Vec<(f64,f64)>)->Result<(),Box<dyn Error>> {
 	write!(self.buf,"<path ")?;
 	self.write_style()?;
 	write!(self.buf," d=\"M")?;
@@ -66,7 +66,7 @@ impl MiniSVG {
 	Ok(())
     }
 
-    pub fn multi_polygon(&mut self,polys:&Vec<Vec<(f64,f64)>>)->Result<(),Box<dyn Error>> {
+    pub fn polygon(&mut self,polys:&Vec<Vec<(f64,f64)>>)->Result<(),Box<dyn Error>> {
 	write!(self.buf,"<path ")?;
 	self.write_style()?;
 	write!(self.buf," d=\"")?;

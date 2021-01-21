@@ -68,7 +68,7 @@ impl Footprints {
 		    a.iter().map(|b| {
 			let c : Vec<(f64,f64)> = b.iter().map(|(x,y)| (x+180.0,y+90.0)).collect();
 			c }).collect();
-		ms.multi_polygon(&mp)?;
+		ms.polygon(&mp)?;
 	    }
 	}
 	Ok(())

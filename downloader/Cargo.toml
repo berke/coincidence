@@ -18,7 +18,9 @@ nom = { version = "6" }
 json = { version = "^0.11" }
 chrono = { version = "^0.4" }
 rmp-serde = { version = "^0.15" }
-geo = { version = "^0.17" }
+#geo = { version = "^0.17" }
+geo = { version = "^0.16" }
+geo-clipper = { version = "^0.4" }
 
 [[bin]]
 name = "intersect"
@@ -33,3 +35,7 @@ path = "src/test_outline_parser.rs"
 [[bin]]
 name = "test_minisvg"
 path = "src/test_minisvg.rs"
+
+[[bin]]
+name = "test_clipper"
+path = "src/test_clipper.rs"
