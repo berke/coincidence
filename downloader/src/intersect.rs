@@ -7,6 +7,7 @@ mod footprint;
 use serde::Serialize;
 use misc_error::MiscError;
 use std::error::Error;
+use std::path::Path;
 use minisvg::MiniSVG;
 use footprint::{Footprint,Footprints};
 
@@ -49,40 +50,60 @@ fn multipolygon_to_vec(mp:&MultiPolygon<f64>)->Vec<Vec<Vec<(f64,f64)>>> {
     mp.iter().map(polygon_to_vec).collect()
 }
 
-fn check_intersection(f1:&Footprint,f2:&Footprint)->bool {
-    let m1 = as_multipolygon(f1);
-    let m2 = as_multipolygon(f2);
-    if m1.intersects(&m2) {
-	let mut msvg = MiniSVG::new("dbg.svg",360.0,180.0).unwrap();
-	msvg.set_stroke(Some((0x000000,0.25,1.0)));
+const FACTOR : f64 = (1 << 24) as f64 / 360.0;
+
+fn clip_to_roi(roi:&Polygon<f64>,mp:&MultiPolygon<f64>)->MultiPolygon<f64> {
+    let mut res = Vec::new();
+    for p in mp.iter() {
+	if roi.intersects(p) {
+	    let inter = roi.intersection(p,FACTOR);
+	    let mut inter : Vec<Polygon<f64>> = inter.iter().map(|x| x.clone()).collect();
+	    res.append(&mut inter);
+	}
+    }
+    let mp_out : MultiPolygon<f64> = res.into();
+    eprintln!("{}&{}={}",roi.unsigned_area(),mp.unsigned_area(),mp_out.unsigned_area());
+    mp_out
+}
+
+fn check_intersection(m1:&MultiPolygon<f64>,m2:&MultiPolygon<f64>)->Option<(f64,MultiPolygon<f64>)> {
+    if m1.intersects(m2) {
 	let mv1 : Vec<&Polygon<f64>> = m1.iter().collect();
 	let mv2 : Vec<&Polygon<f64>> = m2.iter().collect();
 	let n1 = mv1.len();
 	let n2 = mv2.len();
 	//let factor = (1 << 48 / 360) as f64;
 	let factor = (1 << 24) as f64 / 360.0;
-	println!("Factor: {}",factor);
+	//eprintln!("Factor: {}",factor);
+	let mut total_area = 0.0;
+	// let mut msvg = MiniSVG::new("dbg.svg",360.0,180.0).unwrap();
+	let mut mps = Vec::new();
 	for i1 in 0..n1 {
 	    let p1 = mv1[i1].clone();
-	    msvg.set_fill(Some((0xff0000,0.50)));
-	    msvg.polygon(&polygon_to_vec(mv1[i1]));
-	    println!("|{}|={}",i1,p1.unsigned_area());
+	    eprintln!("|{}|={}",i1,p1.unsigned_area());
 	    for i2 in 0..n2 {
 		let p2 = mv2[i2];
-		msvg.set_fill(Some((0x00ff00,0.50)));
-		msvg.polygon(&polygon_to_vec(mv2[i2]));
-		println!("|{}|={}",i2,p2.unsigned_area());
+		eprintln!("|{}|={}",i2,p2.unsigned_area());
 		let inter : MultiPolygon<f64> = p1.intersection(p2,factor);
-		println!("|{} & {}| = {}",i1,i2,inter.unsigned_area());
-		msvg.set_fill(Some((0x0000ff,0.50)));
 		for p in inter.iter() {
-		    msvg.polygon(&polygon_to_vec(p));
+		    mps.push(p.clone());
 		}
+		eprintln!("|{} & {}| = {}",i1,i2,inter.unsigned_area());
+		total_area += inter.unsigned_area();
+		// msvg.set_stroke(Some((0x000000,0.25,1.0)));
+		// msvg.set_fill(Some((0xff0000,0.50)));
+		// msvg.polygon(&polygon_to_vec(mv1[i1])).unwrap();
+		// msvg.set_fill(Some((0x00ff00,0.50)));
+		// msvg.polygon(&polygon_to_vec(mv2[i2])).unwrap();
+		// msvg.set_fill(Some((0x0000ff,0.50)));
+		// for p in inter.iter() {
+		//     msvg.polygon(&polygon_to_vec(p)).unwrap();
+		// }
 	    }
 	}
-	true
+	Some((total_area,MultiPolygon::from(mps)))
     } else {
-	false
+	None
     }
 }
 
@@ -94,20 +115,44 @@ fn main()->Result<(),Box<dyn Error>> {
     let fps2 = Footprints::from_file(fp2_fn)?;
     let n1 = fps1.footprints.len();
     let n2 = fps2.footprints.len();
-    'outer: for i1 in 0..n1 {
+
+    // Metropolitan France: Longitude -5 to 9, latitude 42 à 52
+    let lon0 = -5.0;
+    let lon1 = 9.0;
+    let lat0 = 42.0;
+    let lat1 = 52.0;
+    let roi =
+	Polygon::new(
+	    LineString::from(vec![
+		(lon0,lat0),
+		(lon1,lat0),
+		(lon1,lat1),
+		(lon0,lat1)
+	    ]),
+	    vec![]);
+
+    let mut msvg = MiniSVG::new("out.svg",360.0,180.0,-180.0,-90.0).unwrap();
+    let mut n_inter = 0;
+    for i1 in 0..n1 {
 	let f1 = &fps1.footprints[i1];
+	let f1_mp = clip_to_roi(&roi,&as_multipolygon(&f1));
 	let t1 = f1.mean_time();
 	for i2 in 0..n2 {
 	    let f2 = &fps2.footprints[i2];
 	    let t2 = f2.mean_time();
 	    let delta_t = (t1 - t2).abs();
 	    if delta_t < delta_t_max {
-		let x = check_intersection(f1,f2);
-		if x {
-		    println!("Intersection: {} vs {} (time difference {})",f1.id,f2.id,delta_t);
-		    break 'outer;
+		let f2_mp = clip_to_roi(&roi,&as_multipolygon(&f2));
+		if let Some((area,mp)) = check_intersection(&f1_mp,&f2_mp) {
+		    eprintln!("Intersection {:04}: {} vs {} (time difference {}), pseudo-area: {}",
+			     n_inter,f1.id,f2.id,delta_t,area);
+		    println!("{:04} {} {} {} {}",n_inter,delta_t,area,f1.id,f2.id);
+		    msvg.set_stroke(Some((0x000000,0.25,1.0)));
+		    msvg.set_fill(Some((0xff0000,0.50)));
+		    msvg.multi_polygon(&multipolygon_to_vec(&mp)).unwrap();
+		    n_inter += 1;
 		} else {
-		    println!("No intersection: {} vs {} (time difference {})",f1.id,f2.id,delta_t);
+		    eprintln!("No intersection: {} vs {} (time difference {})",f1.id,f2.id,delta_t);
 		}
 	    }
 	}

@@ -57,7 +57,7 @@ impl Footprints {
 	let Footprints{ footprints } = self;
 	// let n_footprint = footprints.len();
 	// println!("Number of footprints found: {}",n_footprint);
-	let mut ms = MiniSVG::new(path,360.0,180.0)?;
+	let mut ms = MiniSVG::new(path,360.0,180.0,0.0,0.0)?;
 	ms.set_stroke(Some((0xff0000,0.25,1.0)));
 	ms.set_fill(Some((0xffff80,0.25)));
 	for f in footprints.iter() {

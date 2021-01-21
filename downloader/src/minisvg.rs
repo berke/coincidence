@@ -7,7 +7,9 @@ use std::error::Error;
 pub struct MiniSVG {
     buf:BufWriter<File>,
     stroke:Option<(u32,f64,f64)>,
-    fill:Option<(u32,f64)>
+    fill:Option<(u32,f64)>,
+    x0:f64,
+    y0:f64
 }
 
 impl Drop for MiniSVG {
@@ -17,7 +19,7 @@ impl Drop for MiniSVG {
 }
 
 impl MiniSVG {
-    pub fn new<P:AsRef<Path>>(path:P,width:f64,height:f64)->Result<Self,Box<dyn Error>> {
+    pub fn new<P:AsRef<Path>>(path:P,width:f64,height:f64,x0:f64,y0:f64)->Result<Self,Box<dyn Error>> {
 	let fd = File::create(path)?;
 	let mut buf = BufWriter::new(fd);
 
@@ -29,16 +31,20 @@ impl MiniSVG {
 	       xmlns=\"http://www.w3.org/2000/svg\"
 	       width=\"{}mm\"
 	       height=\"{}mm\"
-	       viewBox=\"0 0 {} {}\"
+	       viewBox=\"{} {} {} {}\"
 	       version=\"1.1\">\n",
 	       width,
 	       height,
+	       0.0,
+	       0.0,
 	       width,
 	       height)?;
-	write!(buf,"<rect style=\"fill:#ffffff;fill-rule:evenodd\" width=\"{}\" height=\"{}\" x=\"0\" y=\"0\" />\n",
+	write!(buf,"<rect style=\"fill:#ffffff;fill-rule:evenodd\" width=\"{}\" height=\"{}\" x=\"{}\" y=\"{}\" />\n",
 	       width,
-	       height)?;
-	Ok(Self{ buf,stroke:None,fill:None })
+	       height,
+	       0.0,
+	       0.0)?;
+	Ok(Self{ buf,stroke:None,fill:None,x0,y0 })
     }
 
     fn write_style(&mut self)->Result<(),Box<dyn Error>> {
@@ -60,9 +66,16 @@ impl MiniSVG {
 	self.write_style()?;
 	write!(self.buf," d=\"M")?;
 	for (x,y) in path.iter() {
-	    write!(self.buf," {},{}",x,y)?;
+	    write!(self.buf," {},{}",x - self.x0,-y - self.y0)?;
 	}
 	write!(self.buf," Z\"/>\n")?;
+	Ok(())
+    }
+
+    pub fn multi_polygon(&mut self,polys:&Vec<Vec<Vec<(f64,f64)>>>)->Result<(),Box<dyn Error>> {
+	for p in polys.iter() {
+	    self.polygon(p)?;
+	}
 	Ok(())
     }
 
@@ -79,7 +92,7 @@ impl MiniSVG {
 	    }
 	    write!(self.buf,"M")?;
 	    for (x,y) in poly.iter() {
-		write!(self.buf," {},{}",x,y)?;
+		write!(self.buf," {},{}",x - self.x0,-y - self.y0)?;
 	    }
 	    write!(self.buf," Z")?;
 	}
