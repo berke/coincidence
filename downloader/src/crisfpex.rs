@@ -5,6 +5,7 @@ use std::error::Error;
 use log::{error,info,trace};
 use misc_error::MiscError;
 use ndarray::{s,Array2,ArrayD,AsArray,ArrayView2};
+use chrono::{Datelike,DateTime,NaiveDate,NaiveDateTime,Duration,SecondsFormat,Utc,TimeZone};
 use minisvg::MiniSVG;
 
 fn main()->Result<(),Box<dyn Error>> {
@@ -16,6 +17,8 @@ fn main()->Result<(),Box<dyn Error>> {
 
     let mut msvg = MiniSVG::new("out.svg",360.0,180.0,-180.0,-90.0)?;
     msvg.set_stroke(Some((0xff0000,0.1,0.1)));
+
+    let iet_t0 = DateTime::<Utc>::from_utc(NaiveDate::from_ymd(1958,1,1).and_hms(0,0,0),Utc);
 
     let gr = fd.group("/Data_Products/CrIS-SDR-GEO")?;
     for mem in gr.member_names()?.iter() {
@@ -35,7 +38,12 @@ fn main()->Result<(),Box<dyn Error>> {
 	    let t_end = ds.attribute("N_Ending_Time_IET")?.read_2d::<u64>()?;
 	    let t_start = t_start[[0,0]];
 	    let t_end = t_end[[0,0]];
+
+	    // Microseconds since Jan 1, 1958
 	    trace!("Start: {}, end: {}",t_start,t_end);
+	    let t_start_epoch = iet_t0 + Duration::microseconds(t_start as i64);
+	    let t_end_epoch = iet_t0 + Duration::microseconds(t_end as i64);
+	    trace!("Epoch start: {}, end: {}",t_start_epoch,t_end_epoch);
 
 	    let id : &hdf5::types::FixedAscii<[u8;16]> = &ds.attribute("N_Granule_ID")?.read_raw()?[0];
 	    // let id = &id[0];
