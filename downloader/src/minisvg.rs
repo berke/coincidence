@@ -100,6 +100,13 @@ impl MiniSVG {
 	Ok(())
     }
 
+    pub fn circle(&mut self,x0:f64,y0:f64,r:f64)->Result<(),Box<dyn Error>> {
+	write!(self.buf,"<circle ")?;
+	self.write_style()?;
+	write!(self.buf," cx=\"{}\" cy=\"{}\" r=\"{}\"/>\n",x0,y0,r)?;
+	Ok(())
+    }
+
     pub fn set_stroke(&mut self,stroke:Option<(u32,f64,f64)>) {
 	self.stroke = stroke;
     }

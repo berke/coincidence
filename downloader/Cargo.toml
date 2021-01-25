@@ -21,12 +21,18 @@ rmp-serde = { version = "^0.15" }
 #geo = { version = "^0.17" }
 geo = { version = "^0.16" }
 geo-clipper = { version = "^0.4" }
+hdf5 = {git = "https://github.com/balintbalazs/hdf5-rust", branch = "master" }
+#version = "^0.7" }
+
+
+ndarray = { version = "^0.13" }
+#percent-encoding = { version = "^2.1" }
+log = { version = "^0.4" }
+simple_logger = { version = "^1.10" }
 
 [[bin]]
 name = "intersect"
 path = "src/intersect.rs"
-
-# percent-encoding = { version = "^2.1" }
 
 [[bin]]
 name = "test_outline_parser"
@@ -39,3 +45,7 @@ path = "src/test_minisvg.rs"
 [[bin]]
 name = "test_clipper"
 path = "src/test_clipper.rs"
+
+[[bin]]
+name = "crisfpex"
+path = "src/crisfpex.rs"
