@@ -47,3 +47,7 @@ path = "src/test_clipper.rs"
 [[bin]]
 name = "crisfpex"
 path = "src/crisfpex.rs"
+
+[[bin]]
+name = "fptool"
+path = "src/fptool.rs"
