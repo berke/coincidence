@@ -1,4 +1,4 @@
-use geo::{Coordinate, LineString, Polygon};
+use geo::{Coordinate,LineString,Polygon,algorithm::area::Area};
 use geo_clipper::Clipper;
 
 fn main() {
@@ -27,4 +27,8 @@ fn main() {
     );
 
     let result = subject.intersection(&clip, 1.0);
+    for poly in result.iter() {
+	let a = poly.unsigned_area();
+	println!("Intersection area: {}",a);
+    }
 }

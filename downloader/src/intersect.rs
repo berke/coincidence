@@ -4,10 +4,10 @@ mod misc_error;
 mod minisvg;
 mod footprint;
 
-use serde::Serialize;
+// use serde::Serialize;
 use misc_error::MiscError;
 use std::error::Error;
-use std::path::Path;
+// use std::path::Path;
 use minisvg::MiniSVG;
 use footprint::{Footprint,Footprints};
 

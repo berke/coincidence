@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod misc_error;
 mod outline_parser;
 mod minisvg;

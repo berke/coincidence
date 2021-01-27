@@ -21,14 +21,12 @@ rmp-serde = { version = "^0.15" }
 #geo = { version = "^0.17" }
 geo = { version = "^0.16" }
 geo-clipper = { version = "^0.4" }
-hdf5 = {git = "https://github.com/balintbalazs/hdf5-rust", branch = "master" }
-#version = "^0.7" }
-
-
+hdf5 = { git = "https://github.com/balintbalazs/hdf5-rust", branch = "master" } #version = "^0.7" }
+clap = { version = "^2.33" }
 ndarray = { version = "^0.13" }
-#percent-encoding = { version = "^2.1" }
 log = { version = "^0.4" }
 simple_logger = { version = "^1.10" }
+#percent-encoding = { version = "^2.1" }
 
 [[bin]]
 name = "intersect"
