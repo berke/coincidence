@@ -4,16 +4,15 @@ mod misc_error;
 mod minisvg;
 mod footprint;
 
-// use serde::Serialize;
-use misc_error::MiscError;
 use std::error::Error;
-// use std::path::Path;
-use minisvg::MiniSVG;
-use footprint::{Footprint,Footprints};
-
+use log::{trace,info};
+use clap::{Arg,App};
 use geo::{MultiPolygon,Polygon,LineString};
 use geo::algorithm::{area::Area,intersects::Intersects};
 use geo_clipper::Clipper;
+
+use minisvg::MiniSVG;
+use footprint::{Footprint,Footprints};
 
 fn as_multipolygon(f:&Footprint)->MultiPolygon<f64> {
     let mut u = Vec::new();
@@ -62,7 +61,7 @@ fn clip_to_roi(roi:&Polygon<f64>,mp:&MultiPolygon<f64>)->MultiPolygon<f64> {
 	}
     }
     let mp_out : MultiPolygon<f64> = res.into();
-    eprintln!("{}&{}={}",roi.unsigned_area(),mp.unsigned_area(),mp_out.unsigned_area());
+    trace!("{}&{}={}",roi.unsigned_area(),mp.unsigned_area(),mp_out.unsigned_area());
     mp_out
 }
 
@@ -80,15 +79,15 @@ fn check_intersection(m1:&MultiPolygon<f64>,m2:&MultiPolygon<f64>)->Option<(f64,
 	let mut mps = Vec::new();
 	for i1 in 0..n1 {
 	    let p1 = mv1[i1].clone();
-	    eprintln!("|{}|={}",i1,p1.unsigned_area());
+	    trace!("|{}|={}",i1,p1.unsigned_area());
 	    for i2 in 0..n2 {
 		let p2 = mv2[i2];
-		eprintln!("|{}|={}",i2,p2.unsigned_area());
+		trace!("|{}|={}",i2,p2.unsigned_area());
 		let inter : MultiPolygon<f64> = p1.intersection(p2,factor);
 		for p in inter.iter() {
 		    mps.push(p.clone());
 		}
-		eprintln!("|{} & {}| = {}",i1,i2,inter.unsigned_area());
+		trace!("|{} & {}| = {}",i1,i2,inter.unsigned_area());
 		total_area += inter.unsigned_area();
 		// msvg.set_stroke(Some((0x000000,0.25,1.0)));
 		// msvg.set_fill(Some((0xff0000,0.50)));
@@ -108,19 +107,42 @@ fn check_intersection(m1:&MultiPolygon<f64>,m2:&MultiPolygon<f64>)->Option<(f64,
 }
 
 fn main()->Result<(),Box<dyn Error>> {
-    let fp1_fn = MiscError::from_option(std::env::args().nth(1),"Specify path to first footprint file")?;
-    let fp2_fn = MiscError::from_option(std::env::args().nth(2),"Specify path to second footprint file")?;
-    let delta_t_max = 3600.0;
+    simple_logger::SimpleLogger::new()
+	.with_level(log::LevelFilter::Info)
+	.init()?;
+
+    let args = App::new("intersect")
+	.arg(Arg::with_name("input1").short("i1").long("input1").required(true).takes_value(true))
+	.arg(Arg::with_name("input2").short("i2").long("input2").required(true).takes_value(true))
+	.arg(Arg::with_name("lon0").long("lon0").default_value("-5.0")
+	     .help("Starting longitude of ROI").allow_hyphen_values(true))
+	.arg(Arg::with_name("lon1").long("lon1").default_value("9.0")
+	     .help("Ending longitude of ROI").allow_hyphen_values(true))
+	.arg(Arg::with_name("lat0").long("lat0").default_value("42.0")
+	     .help("Starting latitude of ROI").allow_hyphen_values(true))
+	.arg(Arg::with_name("lat1").long("lat1").default_value("52.0")
+	     .help("Ending latitude of ROI").allow_hyphen_values(true))
+	.get_matches();
+
+    let fp1_fn = args.value_of("input1").unwrap();
+    let fp2_fn = args.value_of("input2").unwrap();
+
+    info!("Loading first set of footprints from {}",fp1_fn);
     let fps1 = Footprints::from_file(fp1_fn)?;
-    let fps2 = Footprints::from_file(fp2_fn)?;
     let n1 = fps1.footprints.len();
+
+    info!("Loading second set of footprints from {}",fp2_fn);
+    let fps2 = Footprints::from_file(fp2_fn)?;
     let n2 = fps2.footprints.len();
 
-    // Metropolitan France: Longitude -5 to 9, latitude 42 à 52
-    let lon0 = -5.0;
-    let lon1 = 9.0;
-    let lat0 = 42.0;
-    let lat1 = 52.0;
+    let delta_t_max = 3600.0;
+
+    let lon0 : f64 = args.value_of("lon0").unwrap().parse().expect("Invalid starting longitude");
+    let lat0 : f64 = args.value_of("lat0").unwrap().parse().expect("Invalid starting latitude");
+    let lon1 : f64 = args.value_of("lon1").unwrap().parse().expect("Invalid ending longitude");
+    let lat1 : f64 = args.value_of("lat1").unwrap().parse().expect("Invalid ending latitude");
+    info!("ROI: latitudes {} to {}, longitudes {} to {}",lat0,lat1,lon0,lon1);
+
     let roi =
 	Polygon::new(
 	    LineString::from(vec![
@@ -144,7 +166,7 @@ fn main()->Result<(),Box<dyn Error>> {
 	    if delta_t < delta_t_max {
 		let f2_mp = clip_to_roi(&roi,&as_multipolygon(&f2));
 		if let Some((area,mp)) = check_intersection(&f1_mp,&f2_mp) {
-		    eprintln!("Intersection {:04}: {} vs {} (time difference {}), pseudo-area: {}",
+		    info!("Intersection {:04}: {} vs {} (time difference {}), pseudo-area: {}",
 			     n_inter,f1.id,f2.id,delta_t,area);
 		    println!("{:04} {} {} {} {}",n_inter,delta_t,area,f1.id,f2.id);
 		    msvg.set_stroke(Some((0x000000,0.25,1.0)));
@@ -152,10 +174,11 @@ fn main()->Result<(),Box<dyn Error>> {
 		    msvg.multi_polygon(&multipolygon_to_vec(&mp)).unwrap();
 		    n_inter += 1;
 		} else {
-		    eprintln!("No intersection: {} vs {} (time difference {})",f1.id,f2.id,delta_t);
+		    trace!("No intersection: {} vs {} (time difference {})",f1.id,f2.id,delta_t);
 		}
 	    }
 	}
     }
+    info!("Number of intersections found: {}",n_inter);
     Ok(())
 }

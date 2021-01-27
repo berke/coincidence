@@ -4,18 +4,11 @@ mod misc_error;
 mod minisvg;
 mod footprint;
 
-// use serde::Serialize;
-use misc_error::MiscError;
 use std::error::Error;
-// use std::path::Path;
-use log::{info,trace};
+use log::info;
 use clap::{Arg,App};
-use minisvg::MiniSVG;
-use footprint::{Footprint,Footprints};
-
-// use geo::{MultiPolygon,Polygon,LineString};
-// use geo::algorithm::{area::Area,intersects::Intersects};
-// use geo_clipper::Clipper;
+use chrono::{Utc,TimeZone};
+use footprint::Footprints;
 
 fn main()->Result<(),Box<dyn Error>> {
     simple_logger::SimpleLogger::new().init()?;
@@ -32,7 +25,10 @@ fn main()->Result<(),Box<dyn Error>> {
 	info!("Number of footprints: {}",m);
 	for i in 0..m{
 	    let fp = &fps.footprints[i];
-	    info!("Time: {} to {}",fp.time_interval.0,fp.time_interval.1);
+	    let (t0,t1) = fp.time_interval;
+	    let ts0 = Utc.timestamp(t0.floor() as i64,(t0.fract() * 1e9 + 0.5).floor() as u32);
+	    let ts1 = Utc.timestamp(t1.floor() as i64,(t1.fract() * 1e9 + 0.5).floor() as u32);
+	    info!("Time: {} to {}",ts0,ts1);
 	    info!("Platform: {}",fp.platform);
 	    info!("Instrument: {}",fp.instrument);
 	    info!("ID: {}",fp.id);
