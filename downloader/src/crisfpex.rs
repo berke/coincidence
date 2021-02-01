@@ -4,10 +4,12 @@ mod footprint;
 mod minisvg;
 
 use std::error::Error;
+use std::path::PathBuf;
 
 use log::{info,trace};
 use chrono::{DateTime,NaiveDate,Duration,Utc};
 use clap::{Arg,App};
+use misc_error::MiscError;
 use footprint::{Footprint,Footprints};
 
 fn main()->Result<(),Box<dyn Error>> {
@@ -27,6 +29,10 @@ fn main()->Result<(),Box<dyn Error>> {
     for geo_fn in geo_fns {
 	info!("Processing file {}",geo_fn);
 	let fd = hdf5::File::open(geo_fn)?;
+
+	let geo_path = PathBuf::from(geo_fn);
+	let dataset_id = MiscError::from_option(geo_path.file_stem(),"Cannot extract dataset name")?.to_string_lossy();
+	info!("Dataset ID: {:?}",dataset_id);
 
 	let platform : &hdf5::types::FixedAscii<[u8;16]> = &fd.attribute("Platform_Short_Name")?.read_raw()?[0];
 	info!("Platform: {}",platform);
@@ -64,11 +70,16 @@ fn main()->Result<(),Box<dyn Error>> {
 		let t_start = t_start_epoch.timestamp_millis() as f64 / 1000.0;
 		let t_end = t_end_epoch.timestamp_millis() as f64 / 1000.0;
 
-		let id : &hdf5::types::FixedAscii<[u8;16]> = &ds.attribute("N_Granule_ID")?.read_raw()?[0];
-		trace!("Granule ID: {}",id);
+		let orbit = ds.attribute("N_Beginning_Orbit_Number")?.read_raw::<u64>()?[0] as usize;
+		trace!("Orbit: {}",orbit);
+
+		let granule_id : &hdf5::types::FixedAscii<[u8;16]> = &ds.attribute("N_Granule_ID")?.read_raw()?[0];
+		trace!("Granule ID: {}",granule_id);
+
+		let id = format!("{}/{}",dataset_id,granule_id);
 
 		let fp = Footprint{
-		    orbit:0,
+		    orbit,
 		    id:id.to_string(),
 		    platform:platform.to_string(),
 		    instrument:instrument.to_string(),
