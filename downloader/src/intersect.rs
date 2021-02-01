@@ -5,8 +5,11 @@ mod minisvg;
 mod footprint;
 
 use std::error::Error;
+use std::fs::File;
+use std::io::{Write,BufWriter};
 use log::{trace,info};
 use clap::{Arg,App};
+use chrono::{Utc,TimeZone};
 use geo::{MultiPolygon,Polygon,LineString};
 use geo::algorithm::{area::Area,intersects::Intersects};
 use geo_clipper::Clipper;
@@ -122,6 +125,10 @@ fn main()->Result<(),Box<dyn Error>> {
 	     .help("Starting latitude of ROI").allow_hyphen_values(true))
 	.arg(Arg::with_name("lat1").long("lat1").default_value("52.0")
 	     .help("Ending latitude of ROI").allow_hyphen_values(true))
+	.arg(Arg::with_name("delta_t").long("delta-t").default_value("13200.0")
+	     .help("Maximum mean time difference (s)"))
+	.arg(Arg::with_name("min_overlap").long("min-overlap").default_value("0.50")
+	     .help("Minimal overal pseudo-area fraction with respect to ROI"))
 	.get_matches();
 
     let fp1_fn = args.value_of("input1").unwrap();
@@ -135,8 +142,8 @@ fn main()->Result<(),Box<dyn Error>> {
     let fps2 = Footprints::from_file(fp2_fn)?;
     let n2 = fps2.footprints.len();
 
-    let delta_t_max = 3600.0;
-
+    let min_overlap : f64 = args.value_of("min_overlap").unwrap().parse().expect("Invalid overlap threshold");
+    let delta_t_max : f64 = args.value_of("delta_t").unwrap().parse().expect("Invalid time limit");
     let lon0 : f64 = args.value_of("lon0").unwrap().parse().expect("Invalid starting longitude");
     let lat0 : f64 = args.value_of("lat0").unwrap().parse().expect("Invalid starting latitude");
     let lon1 : f64 = args.value_of("lon1").unwrap().parse().expect("Invalid ending longitude");
@@ -152,33 +159,74 @@ fn main()->Result<(),Box<dyn Error>> {
 		(lon0,lat1)
 	    ]),
 	    vec![]);
+    let roi_area = roi.unsigned_area();
 
-    let mut msvg = MiniSVG::new("out.svg",360.0,180.0,-180.0,-90.0).unwrap();
+    let mut msvg = MiniSVG::new("out.svg",lon1-lon0,lat1-lat0,lon0,lat0).unwrap();
     let mut n_inter = 0;
+
+    info!("Number of footprints in first file: {}",n1);
+    info!("Number of footprints in second file: {}",n2);
+
+    let mut n_time_match = 0;
+    let mut n_insufficient_overlap = 0;
+
+    let report_path = "out.dat";
+    let report_fd = File::create(report_path)?;
+    let mut report_buf = BufWriter::new(report_fd);
+
     for i1 in 0..n1 {
 	let f1 = &fps1.footprints[i1];
 	let f1_mp = clip_to_roi(&roi,&as_multipolygon(&f1));
-	let t1 = f1.mean_time();
+	// let t1 = f1.mean_time();
 	for i2 in 0..n2 {
 	    let f2 = &fps2.footprints[i2];
-	    let t2 = f2.mean_time();
-	    let delta_t = (t1 - t2).abs();
-	    if delta_t < delta_t_max {
+	    // let t2 = f2.mean_time();
+
+	    let min_delta_t =
+		if f1.time_interval.1 <= f2.time_interval.0 {
+		    f2.time_interval.0 - f1.time_interval.1
+		} else {
+		    if f2.time_interval.1 <= f1.time_interval.0 {
+			f1.time_interval.0 - f2.time_interval.1
+		    } else {
+			0.0
+		    }
+		};
+	    
+	    if min_delta_t <= delta_t_max {
+		n_time_match += 1;
 		let f2_mp = clip_to_roi(&roi,&as_multipolygon(&f2));
 		if let Some((area,mp)) = check_intersection(&f1_mp,&f2_mp) {
-		    info!("Intersection {:04}: {} vs {} (time difference {}), pseudo-area: {}",
-			     n_inter,f1.id,f2.id,delta_t,area);
-		    println!("{:04} {} {} {} {}",n_inter,delta_t,area,f1.id,f2.id);
-		    msvg.set_stroke(Some((0x000000,0.25,1.0)));
-		    msvg.set_fill(Some((0xff0000,0.50)));
-		    msvg.multi_polygon(&multipolygon_to_vec(&mp)).unwrap();
+		    let area_ratio = area / roi_area;
+		    if area_ratio > min_overlap {
+			let t0 = f1.time_interval.0.min(f2.time_interval.0);
+			let t1 = f1.time_interval.1.max(f2.time_interval.1);
+			let ts0 = Utc.timestamp(t0.floor() as i64,(t0.fract() * 1e9 + 0.5).floor() as u32);
+			let ts1 = Utc.timestamp(t1.floor() as i64,(t1.fract() * 1e9 + 0.5).floor() as u32);
+			info!("F1 {:?} F2 {:?}",f1.time_interval,f2.time_interval);
+
+			info!("Intersection {:04}: {} vs {} (time difference {}), pseudo-area ratio: {}, time: {} to {}",
+			      n_inter,f1.id,f2.id,min_delta_t,area_ratio,ts0,ts1);
+			writeln!(report_buf,"|| {:04} || {} || {} || {:5.1} || {:5.3} || `{}` || `{}` ||",
+				 n_inter,
+				 ts0,
+				 ts1,
+				 min_delta_t,area_ratio,f1.id,f2.id)?;
+			msvg.set_stroke(Some((0x000000,0.25,1.0)));
+			msvg.set_fill(Some((0xff0000,0.50)));
+			msvg.multi_polygon(&multipolygon_to_vec(&mp)).unwrap();
+		    } else {
+			n_insufficient_overlap += 1;
+		    }
 		    n_inter += 1;
 		} else {
-		    trace!("No intersection: {} vs {} (time difference {})",f1.id,f2.id,delta_t);
+		    trace!("No intersection: {} vs {} (time difference {})",f1.id,f2.id,min_delta_t);
 		}
 	    }
 	}
     }
+    info!("Number of pairs tested: {}",n_time_match);
+    info!("Number of pairs rejected due to insufficient overlapping pseudo-area: {}",n_insufficient_overlap);
     info!("Number of intersections found: {}",n_inter);
     Ok(())
 }

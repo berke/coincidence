@@ -66,7 +66,7 @@ impl MiniSVG {
 	self.write_style()?;
 	write!(self.buf," d=\"M")?;
 	for (x,y) in path.iter() {
-	    write!(self.buf," {},{}",x - self.x0,-y - self.y0)?;
+	    write!(self.buf," {},{}",x - self.x0,-y + self.y0)?;
 	}
 	write!(self.buf," Z\"/>\n")?;
 	Ok(())
@@ -92,7 +92,7 @@ impl MiniSVG {
 	    }
 	    write!(self.buf,"M")?;
 	    for (x,y) in poly.iter() {
-		write!(self.buf," {},{}",x - self.x0,-y - self.y0)?;
+		write!(self.buf," {},{}",x - self.x0,-y + self.y0)?;
 	    }
 	    write!(self.buf," Z")?;
 	}
@@ -103,7 +103,7 @@ impl MiniSVG {
     pub fn circle(&mut self,x0:f64,y0:f64,r:f64)->Result<(),Box<dyn Error>> {
 	write!(self.buf,"<circle ")?;
 	self.write_style()?;
-	write!(self.buf," cx=\"{}\" cy=\"{}\" r=\"{}\"/>\n",x0,y0,r)?;
+	write!(self.buf," cx=\"{}\" cy=\"{}\" r=\"{}\"/>\n",x0 - self.x0,-y0 + self.y0,r)?;
 	Ok(())
     }
 
