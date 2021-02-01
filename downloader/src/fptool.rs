@@ -10,12 +10,52 @@ use clap::{Arg,App};
 use chrono::{Utc,TimeZone};
 use footprint::Footprints;
 
+struct Stats {
+    n:usize,
+    x0:f64,
+    x1:f64,
+    sx:f64
+}
+
+impl Stats {
+    pub fn new()->Self {
+	Self{ n:0,
+	      x0:0.0,
+	      x1:0.0,
+	      sx:0.0 }
+    }
+
+    pub fn add(&mut self,x:f64) {
+	if self.n == 0 {
+	    self.x0 = x;
+	    self.x1 = x;
+	} else {
+	    self.x0 = self.x0.min(x);
+	    self.x1 = self.x1.max(x);
+	}
+	self.n += 1;
+	self.sx += x;
+    }
+
+    pub fn summary(&self)->(f64,f64,f64) {
+	(self.x0,self.sx/self.n as f64,self.x1)
+    }
+}
+
 fn main()->Result<(),Box<dyn Error>> {
     simple_logger::SimpleLogger::new().init()?;
 
     let args = App::new("fptool")
 	.arg(Arg::with_name("input").multiple(true))
+	.arg(Arg::with_name("concat").short("c").takes_value(true))
 	.get_matches();
+
+    let mut footprints = Vec::new();
+    let concat_fn = args.value_of("concat");
+    let concatenate = concat_fn != None;
+
+    let mut lat_stats = Stats::new();
+    let mut lon_stats = Stats::new();
 
     let fp_fns = args.values_of("input").expect("Specify footprint files");
     for fp_fn in fp_fns {
@@ -33,7 +73,31 @@ fn main()->Result<(),Box<dyn Error>> {
 	    info!("Platform: {}",fp.platform);
 	    info!("Instrument: {}",fp.instrument);
 	    info!("ID: {}",fp.id);
+	    for poly in fp.outline.iter() {
+		for ring in poly.iter() {
+		    for &(lat,lon) in ring.iter() {
+			lat_stats.add(lat);
+			lon_stats.add(lon);
+		    }
+		}
+	    }
+	    if concatenate {
+		footprints.push(fp.clone());
+	    }
 	}
     }
+
+    let (lat0,lat_mean,lat1) = lat_stats.summary();
+    let (lon0,lon_mean,lon1) = lon_stats.summary();
+    info!("Latitude range: {} to {}, mean {}",lat0,lat1,lat_mean);
+    info!("Longitude range: {} to {}, mean {}",lon0,lon1,lon_mean);
+
+    if let Some(path) = concat_fn {
+	let m = footprints.len();
+	info!("Saving {} footprints to {}",m,path);
+	let fps = Footprints{ footprints };
+	fps.save_to_file(path)?;
+    }
+
     Ok(())
 }
