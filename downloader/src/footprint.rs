@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::path::Path;
 use std::fs::File;
-use std::io::{BufReader,BufWriter};
+use std::io::{BufReader,BufWriter,Write};
 use serde::{Serialize,Deserialize};
 use chrono::{Utc,TimeZone};
 
@@ -101,6 +101,53 @@ impl Footprints {
 	    ms.set_fill(Some((0x000000,1.00)));
 	    ms.text(lon0,lat0,0.2,&tss.to_string())?;
 	}
+	Ok(())
+    }
+
+    pub fn export_geojson<P:AsRef<Path>>(&self,path:P)->Result<(),Box<dyn Error>> {
+	use geojson::{Feature,FeatureCollection,GeoJson,Geometry,Value};
+	use serde_json::{Map,to_value};
+
+	let fd = File::create(path)?;
+	let mut buf = BufWriter::new(fd);
+
+	let mut features = Vec::new();
+	for fp in self.footprints.iter() {
+	    let t = fp.mean_time();
+	    let ts = Utc.timestamp(t.floor() as i64,(t.fract() * 1e9 + 0.5).floor() as u32);
+	    let tss = ts.format("%H:%M");
+
+	    for poly in fp.outline.iter() {
+		for ring in poly.iter() {
+		    let mut props = Map::new();
+		    props.insert(
+			String::from("time"),
+			to_value(tss.to_string()).unwrap()
+			);
+		    let geo =
+			Geometry::new(Value::Polygon(
+			    vec![
+				ring.iter()
+				    .map(|&(x,y)| vec![x,y])
+				    .collect()
+			    ]));
+		    let feature = Feature {
+			bbox:None,
+			geometry:Some(geo),
+			id:None,
+			properties:Some(props),
+			foreign_members:None
+		    };
+		    features.push(feature);
+		}
+	    }
+	}
+	let fc = FeatureCollection {
+	    bbox:None,
+	    features,
+	    foreign_members:None
+	};
+	serde_json::ser::to_writer(&mut buf,&fc)?;
 	Ok(())
     }
 }

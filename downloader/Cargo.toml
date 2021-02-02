@@ -17,6 +17,7 @@ regex = { version = "1" }
 nom = { version = "6" }
 json = { version = "^0.11" }
 chrono = { version = "^0.4" }
+serde_json = { version = "^1.0" }
 rmp-serde = { version = "^0.15" }
 #geo = { version = "^0.17" }
 geo = { version = "^0.16" }
@@ -27,6 +28,7 @@ ndarray = { version = "^0.13" }
 log = { version = "^0.4" }
 simple_logger = { version = "^1.10" }
 #percent-encoding = { version = "^2.1" }
+geojson = { version = "^0.21" }
 
 [[bin]]
 name = "intersect"

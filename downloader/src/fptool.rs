@@ -49,6 +49,7 @@ fn main()->Result<(),Box<dyn Error>> {
 	.arg(Arg::with_name("input").multiple(true))
 	.arg(Arg::with_name("concat").short("c").takes_value(true))
 	.arg(Arg::with_name("draw").short("d").takes_value(true))
+	.arg(Arg::with_name("export").short("e").takes_value(true))
 	.get_matches();
 
     let mut footprints = Vec::new();
@@ -97,6 +98,10 @@ fn main()->Result<(),Box<dyn Error>> {
 	let m = fps.footprints.len();
 	info!("Saving {} footprints to {}",m,path);
 	fps.save_to_file(path)?;
+    }
+
+    if let Some(export_fn) = args.value_of("export") {
+	fps.export_geojson(export_fn)?;
     }
 
     Ok(())
