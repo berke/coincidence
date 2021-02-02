@@ -54,7 +54,7 @@ fn main()->Result<(),Box<dyn Error>> {
 		let (m,_) = lats.dim();
 		let mut ring = Vec::new();
 		for i in 0..m {
-		    ring.push((lats[[i,0]],lons[[i,0]]));
+		    ring.push((lons[[i,0]],lats[[i,0]]));
 		}
 		outline.push(vec![ring]);
 

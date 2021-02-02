@@ -48,11 +48,10 @@ fn main()->Result<(),Box<dyn Error>> {
     let args = App::new("fptool")
 	.arg(Arg::with_name("input").multiple(true))
 	.arg(Arg::with_name("concat").short("c").takes_value(true))
+	.arg(Arg::with_name("draw").short("d").takes_value(true))
 	.get_matches();
 
     let mut footprints = Vec::new();
-    let concat_fn = args.value_of("concat");
-    let concatenate = concat_fn != None;
 
     let mut lat_stats = Stats::new();
     let mut lon_stats = Stats::new();
@@ -75,27 +74,28 @@ fn main()->Result<(),Box<dyn Error>> {
 	    info!("ID: {}",fp.id);
 	    for poly in fp.outline.iter() {
 		for ring in poly.iter() {
-		    for &(lat,lon) in ring.iter() {
-			lat_stats.add(lat);
+		    for &(lon,lat) in ring.iter() {
 			lon_stats.add(lon);
+			lat_stats.add(lat);
 		    }
 		}
 	    }
-	    if concatenate {
-		footprints.push(fp.clone());
-	    }
+	    footprints.push(fp.clone());
 	}
     }
-
-    let (lat0,lat_mean,lat1) = lat_stats.summary();
     let (lon0,lon_mean,lon1) = lon_stats.summary();
-    info!("Latitude range: {} to {}, mean {}",lat0,lat1,lat_mean);
+    let (lat0,lat_mean,lat1) = lat_stats.summary();
     info!("Longitude range: {} to {}, mean {}",lon0,lon1,lon_mean);
+    info!("Latitude range: {} to {}, mean {}",lat0,lat1,lat_mean);
 
-    if let Some(path) = concat_fn {
-	let m = footprints.len();
+    let fps = Footprints{ footprints };
+    if let Some(draw_fn) = args.value_of("draw") {
+	fps.draw(draw_fn)?;
+    }
+
+    if let Some(path) = args.value_of("concat") {
+	let m = fps.footprints.len();
 	info!("Saving {} footprints to {}",m,path);
-	let fps = Footprints{ footprints };
 	fps.save_to_file(path)?;
     }
 
