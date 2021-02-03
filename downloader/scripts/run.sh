@@ -29,8 +29,8 @@ for target in four-corners tar-sands ; do
     if [ ! -e $OUT/inter-$target.tracwiki ]; then
 	awk -e 'BEGIN{ FS="\t" }
 	    { if ("'$T_MIN'" <= $2 && $3 <= "'$T_MAX'") 
-	      { printf("|| %04d || %s || %s || %.1f || %.3f || [[https://s5phub.copernicus.eu/dhus/search?q=%s|S5P]] || [[https://api.eumetsat.int/data/download/products/%s|IASI]] ||\n",$1,$2,$3,$4,$5,$6,$7) } }' \
+	      { printf("|| %s || %s || %.1f || %.3f || [[https://s5phub.copernicus.eu/dhus/search?q=%s|S5P]] || [[https://api.eumetsat.int/data/download/products/%s|IASI]] || %04d ||\n",$2,$3,$4,$5,$6,$7,$1) } }' \
 	    $OUT/inter-$target.txt \
-	    > $OUT/inter-$target.tracwiki
+	    | sort > $OUT/inter-$target.tracwiki
     fi
 done
