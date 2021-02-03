@@ -6,6 +6,12 @@ use geo_clipper::Clipper;
 
 pub const FACTOR : f64 = (1 << 24) as f64 / 360.0;
 
+pub fn ring_to_vec<F:Fn((f64,f64))->(f64,f64)>(p:&Polygon<f64>,f:F)->Vec<(f64,f64)> {
+    let (pve1,_) = p.clone().into_inner();
+    let pve1 : Vec<(f64,f64)> = pve1.points_iter().map(|pt| f((pt.x(),pt.y()))).collect();
+    pve1
+}
+
 pub fn polygon_to_vec<F:Fn((f64,f64))->(f64,f64)>(p:&Polygon<f64>,f:F)->Vec<Vec<(f64,f64)>> {
     let (pve1,pvi1) = p.clone().into_inner();
     let pve1 : Vec<(f64,f64)> = pve1.points_iter().map(|pt| f((pt.x(),pt.y()))).collect();
@@ -43,4 +49,29 @@ pub fn rectangle((lon0,lat0):(f64,f64),(lon1,lat1):(f64,f64))->Polygon<f64> {
 	    (lon0,lat1)
 	]),
 	vec![])
+}
+
+pub fn ring_to_polygon(ring:&Vec<(f64,f64)>)->Polygon<f64> {
+    let exterior : LineString<f64> = ring.clone().into();
+    Polygon::new(exterior,vec![])
+}
+
+pub fn outline_to_multipolygon(outline:&Vec<Vec<Vec<(f64,f64)>>>)->MultiPolygon<f64> {
+    let mut u = Vec::new();
+    // f.outline: Vec<Vec<Vec<(f64,f64)>>>
+    // f.outline.iter(): &Vec<Vec<(f64,f64)>>
+    // f.outline.iter().iter(): &Vec<(f64,f64)>
+    for a in outline.iter() {
+	let m = a.len();
+	if m > 0 {
+	    let exterior : LineString<f64> = a[0].clone().into();
+	    let interior : Vec<LineString<f64>> = a.iter().skip(1).map(|o| {
+		let ls : LineString<f64> = o.clone().into();
+		ls
+	    }).collect();
+	    let poly = Polygon::new(exterior,interior);
+	    u.push(poly);
+	}
+    }
+    MultiPolygon::from(u)
 }

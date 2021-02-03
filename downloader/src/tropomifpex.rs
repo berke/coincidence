@@ -91,19 +91,25 @@ fn main()->Result<(),Box<dyn Error>> {
 		if iscan >= scan0+nscan {
 		    break;
 		}
-		let mut outline = Vec::new();
-		let poly = Vec::new();
+		let mut outline : Vec<Vec<Vec<(f64,f64)>>> = Vec::new();
+		let mut ring = Vec::new();
 		for ipix in 0..npix {
-		    let mut ring = Vec::new();
-		    for ivert in 0..nvert {
-			ring.push((lons[[igra,iscan,ipix,ivert]] as f64,
-				   lats[[igra,iscan,ipix,ivert]] as f64));
-		    }
-		    if amcut::cut_and_push(&mut outline,ring) {
-			ncross += 1;
-		    }
+		    ring.push((lons[[igra,iscan,ipix,0]] as f64,
+			       lats[[igra,iscan,ipix,0]] as f64));
 		}
-		outline.push(poly);
+		ring.push((lons[[igra,iscan,npix - 1,1]] as f64,
+			   lats[[igra,iscan,npix - 1,1]] as f64));
+		for ipix in (0..npix).rev() {
+		    ring.push((lons[[igra,iscan,ipix,2]] as f64,
+			       lats[[igra,iscan,ipix,2]] as f64));
+		}
+		ring.push((lons[[igra,iscan,0,3]] as f64,
+			   lats[[igra,iscan,0,3]] as f64));
+
+		if amcut::cut_and_push(&mut outline,ring) {
+		    ncross += 1;
+		}
+		
 		let t_obs = tropomi_t0 + Duration::seconds(times[[igra]] as i64) + Duration::milliseconds(delta_times[[igra,iscan]] as i64);
 		let t0 = t_obs.timestamp_millis() as f64 / 1000.0;
 		let t1 = t0 + t_exp;

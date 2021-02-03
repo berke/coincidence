@@ -16,28 +16,28 @@ use geo::algorithm::{area::Area,intersects::Intersects};
 use geo_clipper::Clipper;
 
 use minisvg::MiniSVG;
-use footprint::{Footprint,Footprints};
-use poly_utils::{multipolygon_to_vec,clip_to_roi,FACTOR};
+use footprint::Footprints;
+use poly_utils::{multipolygon_to_vec,clip_to_roi,outline_to_multipolygon,FACTOR};
 
-fn as_multipolygon(f:&Footprint)->MultiPolygon<f64> {
-    let mut u = Vec::new();
-    // f.outline: Vec<Vec<Vec<(f64,f64)>>>
-    // f.outline.iter(): &Vec<Vec<(f64,f64)>>
-    // f.outline.iter().iter(): &Vec<(f64,f64)>
-    for a in f.outline.iter() {
-	let m = a.len();
-	if m > 0 {
-	    let exterior : LineString<f64> = a[0].clone().into();
-	    let interior : Vec<LineString<f64>> = a.iter().skip(1).map(|o| {
-		let ls : LineString<f64> = o.clone().into();
-		ls
-	    }).collect();
-	    let poly = Polygon::new(exterior,interior);
-	    u.push(poly);
-	}
-    }
-    MultiPolygon::from(u)
-}
+// fn as_multipolygon(f:&Footprint)->MultiPolygon<f64> {
+//     let mut u = Vec::new();
+//     // f.outline: Vec<Vec<Vec<(f64,f64)>>>
+//     // f.outline.iter(): &Vec<Vec<(f64,f64)>>
+//     // f.outline.iter().iter(): &Vec<(f64,f64)>
+//     for a in f.outline.iter() {
+// 	let m = a.len();
+// 	if m > 0 {
+// 	    let exterior : LineString<f64> = a[0].clone().into();
+// 	    let interior : Vec<LineString<f64>> = a.iter().skip(1).map(|o| {
+// 		let ls : LineString<f64> = o.clone().into();
+// 		ls
+// 	    }).collect();
+// 	    let poly = Polygon::new(exterior,interior);
+// 	    u.push(poly);
+// 	}
+//     }
+//     MultiPolygon::from(u)
+// }
 
 // fn polygon_to_vec(p:&Polygon<f64>)->Vec<Vec<(f64,f64)>> {
 //     let (pve1,pvi1) = p.clone().into_inner();
@@ -178,7 +178,7 @@ fn main()->Result<(),Box<dyn Error>> {
 
     for i1 in 0..n1 {
 	let f1 = &fps1.footprints[i1];
-	let f1_mp = clip_to_roi(&roi,&as_multipolygon(&f1));
+	let f1_mp = clip_to_roi(&roi,&outline_to_multipolygon(&f1.outline));
 	// let t1 = f1.mean_time();
 	for i2 in 0..n2 {
 	    let f2 = &fps2.footprints[i2];
@@ -197,7 +197,7 @@ fn main()->Result<(),Box<dyn Error>> {
 	    
 	    if min_delta_t <= delta_t_max {
 		n_time_match += 1;
-		let f2_mp = clip_to_roi(&roi,&as_multipolygon(&f2));
+		let f2_mp = clip_to_roi(&roi,&outline_to_multipolygon(&f2.outline));
 		if let Some((area,mp)) = check_intersection(&f1_mp,&f2_mp) {
 		    let area_ratio = area / roi_area;
 		    if area_ratio > min_overlap {

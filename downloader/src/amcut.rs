@@ -43,10 +43,10 @@ pub fn cut_and_push(outline:&mut Vec<Vec<Vec<(f64,f64)>>>,ring:Vec<(f64,f64)>)->
 	let f_west = |(x,y)| if x >= 180.0 { (x - 360.0,y) } else { (x,y) };
 
 	for p in poly_east.iter() {
-	    outline.push(poly_utils::polygon_to_vec(&p,f_east));
+	    outline.push(vec![poly_utils::ring_to_vec(&p,f_east)]);
 	}
 	for p in poly_west.iter() {
-	    outline.push(poly_utils::polygon_to_vec(&p,f_west));
+	    outline.push(vec![poly_utils::ring_to_vec(&p,f_west)]);
 	}
 	true
     }
