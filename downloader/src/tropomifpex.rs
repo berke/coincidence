@@ -2,6 +2,8 @@
 mod misc_error;
 mod footprint;
 mod minisvg;
+mod amcut;
+mod poly_utils;
 
 use std::error::Error;
 use std::path::PathBuf;
@@ -90,29 +92,15 @@ fn main()->Result<(),Box<dyn Error>> {
 		    break;
 		}
 		let mut outline = Vec::new();
-		let mut poly = Vec::new();
+		let poly = Vec::new();
 		for ipix in 0..npix {
 		    let mut ring = Vec::new();
-		    let mut cross = false;
 		    for ivert in 0..nvert {
-			if ivert > 0 {
-			    if lons[[igra,iscan,ipix,ivert-1]].signum() != lons[[igra,iscan,ipix,ivert]].signum() {
-				cross = true;
-			    }
-			} else {
-			    if lons[[igra,iscan,ipix,nvert-1]].signum() != lons[[igra,iscan,ipix,ivert]].signum() {
-				cross = true;
-			    }
-			}
+			ring.push((lons[[igra,iscan,ipix,ivert]] as f64,
+				   lats[[igra,iscan,ipix,ivert]] as f64));
 		    }
-		    if cross {
+		    if amcut::cut_and_push(&mut outline,ring) {
 			ncross += 1;
-		    } else {
-			for ivert in 0..nvert {
-			    ring.push((lons[[igra,iscan,ipix,ivert]] as f64,
-				       lats[[igra,iscan,ipix,ivert]] as f64));
-			}
-			poly.push(ring);
 		    }
 		}
 		outline.push(poly);

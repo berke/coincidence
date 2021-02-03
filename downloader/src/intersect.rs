@@ -3,6 +3,7 @@
 mod misc_error;
 mod minisvg;
 mod footprint;
+mod poly_utils;
 
 use std::error::Error;
 use std::fs::File;
@@ -16,6 +17,7 @@ use geo_clipper::Clipper;
 
 use minisvg::MiniSVG;
 use footprint::{Footprint,Footprints};
+use poly_utils::{multipolygon_to_vec,clip_to_roi,FACTOR};
 
 fn as_multipolygon(f:&Footprint)->MultiPolygon<f64> {
     let mut u = Vec::new();
@@ -37,36 +39,36 @@ fn as_multipolygon(f:&Footprint)->MultiPolygon<f64> {
     MultiPolygon::from(u)
 }
 
-fn polygon_to_vec(p:&Polygon<f64>)->Vec<Vec<(f64,f64)>> {
-    let (pve1,pvi1) = p.clone().into_inner();
-    let pve1 : Vec<(f64,f64)> = pve1.points_iter().map(|pt| (pt.x(),pt.y())).collect();
-    let mut pvi1 : Vec<Vec<(f64,f64)>> =
-	pvi1.iter().map(|ls| ls.points_iter().map(|pt| (pt.x(),pt.y())).collect()).collect();
-    let mut u = Vec::new();
-    u.push(pve1);
-    u.append(&mut pvi1);
-    u
-}
+// fn polygon_to_vec(p:&Polygon<f64>)->Vec<Vec<(f64,f64)>> {
+//     let (pve1,pvi1) = p.clone().into_inner();
+//     let pve1 : Vec<(f64,f64)> = pve1.points_iter().map(|pt| (pt.x(),pt.y())).collect();
+//     let mut pvi1 : Vec<Vec<(f64,f64)>> =
+// 	pvi1.iter().map(|ls| ls.points_iter().map(|pt| (pt.x(),pt.y())).collect()).collect();
+//     let mut u = Vec::new();
+//     u.push(pve1);
+//     u.append(&mut pvi1);
+//     u
+// }
 
-fn multipolygon_to_vec(mp:&MultiPolygon<f64>)->Vec<Vec<Vec<(f64,f64)>>> {
-    mp.iter().map(polygon_to_vec).collect()
-}
+// fn multipolygon_to_vec(mp:&MultiPolygon<f64>)->Vec<Vec<Vec<(f64,f64)>>> {
+//     mp.iter().map(polygon_to_vec).collect()
+// }
 
-const FACTOR : f64 = (1 << 24) as f64 / 360.0;
+// const FACTOR : f64 = (1 << 24) as f64 / 360.0;
 
-fn clip_to_roi(roi:&Polygon<f64>,mp:&MultiPolygon<f64>)->MultiPolygon<f64> {
-    let mut res = Vec::new();
-    for p in mp.iter() {
-	if roi.intersects(p) {
-	    let inter = roi.intersection(p,FACTOR);
-	    let mut inter : Vec<Polygon<f64>> = inter.iter().map(|x| x.clone()).collect();
-	    res.append(&mut inter);
-	}
-    }
-    let mp_out : MultiPolygon<f64> = res.into();
-    trace!("{}&{}={}",roi.unsigned_area(),mp.unsigned_area(),mp_out.unsigned_area());
-    mp_out
-}
+// fn clip_to_roi(roi:&Polygon<f64>,mp:&MultiPolygon<f64>)->MultiPolygon<f64> {
+//     let mut res = Vec::new();
+//     for p in mp.iter() {
+// 	if roi.intersects(p) {
+// 	    let inter = roi.intersection(p,FACTOR);
+// 	    let mut inter : Vec<Polygon<f64>> = inter.iter().map(|x| x.clone()).collect();
+// 	    res.append(&mut inter);
+// 	}
+//     }
+//     let mp_out : MultiPolygon<f64> = res.into();
+//     trace!("{}&{}={}",roi.unsigned_area(),mp.unsigned_area(),mp_out.unsigned_area());
+//     mp_out
+// }
 
 fn check_intersection(m1:&MultiPolygon<f64>,m2:&MultiPolygon<f64>)->Option<(f64,MultiPolygon<f64>)> {
     if m1.intersects(m2) {
@@ -75,7 +77,7 @@ fn check_intersection(m1:&MultiPolygon<f64>,m2:&MultiPolygon<f64>)->Option<(f64,
 	let n1 = mv1.len();
 	let n2 = mv2.len();
 	//let factor = (1 << 48 / 360) as f64;
-	let factor = (1 << 24) as f64 / 360.0;
+	// let factor = (1 << 24) as f64 / 360.0;
 	//eprintln!("Factor: {}",factor);
 	let mut total_area = 0.0;
 	// let mut msvg = MiniSVG::new("dbg.svg",360.0,180.0).unwrap();
@@ -86,7 +88,7 @@ fn check_intersection(m1:&MultiPolygon<f64>,m2:&MultiPolygon<f64>)->Option<(f64,
 	    for i2 in 0..n2 {
 		let p2 = mv2[i2];
 		trace!("|{}|={}",i2,p2.unsigned_area());
-		let inter : MultiPolygon<f64> = p1.intersection(p2,factor);
+		let inter : MultiPolygon<f64> = p1.intersection(p2,FACTOR);
 		for p in inter.iter() {
 		    mps.push(p.clone());
 		}
