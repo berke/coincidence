@@ -126,7 +126,7 @@ fn main()->Result<(),Box<dyn Error>> {
 		iscan += mscan;
 	    }
 	}
-	info!("Number of pixels dropped due to crossing the meridian boundary: {}",ncross);
+	info!("Number of scan lines that have been split due to crossing the meridian boundary: {}",ncross);
     }
     let fps = Footprints{ footprints };
     fps.save_to_file(out_fn)?;
