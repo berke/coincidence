@@ -4,6 +4,7 @@ INTERSECT=${INTERSECT:-target/release/intersect}
 IN1=${IN1:-iasi-all.mpk}
 IN2=${IN2:-tropomi-all.mpk}
 OUT=${OUT:-out.txt}
+DELTA_T=${DELTA_T:-3600.0}
 
 TARGET=${TARGET:-tar-sands}
 
@@ -31,5 +32,5 @@ $INTERSECT \
     --input1 $IN1 \
     --input2 $IN2 \
     --lat0 $LAT0 --lat1 $LAT1 --lon0 $LON0 --lon1 $LON1 \
-    --delta-t 3600 \
-    | tee $TARGET/$OUT
+    --delta-t $DELTA_T \
+    --report $OUT

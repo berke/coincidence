@@ -55,6 +55,9 @@ fn main()->Result<(),Box<dyn Error>> {
     let args = App::new("intersect")
 	.arg(Arg::with_name("input1").short("i1").long("input1").required(true).takes_value(true))
 	.arg(Arg::with_name("input2").short("i2").long("input2").required(true).takes_value(true))
+	.arg(Arg::with_name("report").short("r").long("report").required(true)
+	     .help("Path to output report to be created")
+	     .takes_value(true))
 	.arg(Arg::with_name("lon0").long("lon0").default_value("-5.0")
 	     .help("Starting longitude of ROI").allow_hyphen_values(true))
 	.arg(Arg::with_name("lon1").long("lon1").default_value("9.0")
@@ -71,6 +74,7 @@ fn main()->Result<(),Box<dyn Error>> {
 
     let fp1_fn = args.value_of("input1").unwrap();
     let fp2_fn = args.value_of("input2").unwrap();
+    let report_fn = args.value_of("report").unwrap();
 
     info!("Loading first set of footprints from {}",fp1_fn);
     let fps1 = Footprints::from_file(fp1_fn)?;
@@ -108,8 +112,7 @@ fn main()->Result<(),Box<dyn Error>> {
     let mut n_time_match = 0;
     let mut n_insufficient_overlap = 0;
 
-    let report_path = "out.dat";
-    let report_fd = File::create(report_path)?;
+    let report_fd = File::create(report_fn)?;
     let mut report_buf = BufWriter::new(report_fd);
 
     for i1 in 0..n1 {
@@ -141,11 +144,11 @@ fn main()->Result<(),Box<dyn Error>> {
 			let t1 = f1.time_interval.1.max(f2.time_interval.1);
 			let ts0 = Utc.timestamp(t0.floor() as i64,(t0.fract() * 1e9 + 0.5).floor() as u32);
 			let ts1 = Utc.timestamp(t1.floor() as i64,(t1.fract() * 1e9 + 0.5).floor() as u32);
-			info!("F1 {:?} F2 {:?}",f1.time_interval,f2.time_interval);
+			trace!("F1 {:?} F2 {:?}",f1.time_interval,f2.time_interval);
 
-			info!("Intersection {:04}: {} vs {} (time difference {}), pseudo-area ratio: {}, time: {} to {}",
+			trace!("Intersection {:04}: {} vs {} (time difference {}), pseudo-area ratio: {}, time: {} to {}",
 			      n_inter,f1.id,f2.id,min_delta_t,area_ratio,ts0,ts1);
-			writeln!(report_buf,"|| {:04} || {} || {} || {:5.1} || {:5.3} || `{}` || `{}` ||",
+			writeln!(report_buf,"{:04}\t{}\t{}\t{:5.1}\t{:5.3}\t{}\t{}",
 				 n_inter,
 				 ts0,
 				 ts1,
@@ -153,10 +156,10 @@ fn main()->Result<(),Box<dyn Error>> {
 			msvg.set_stroke(Some((0x000000,0.25,1.0)));
 			msvg.set_fill(Some((0xff0000,0.50)));
 			msvg.multi_polygon(&multipolygon_to_vec(&mp)).unwrap();
+			n_inter += 1;
 		    } else {
 			n_insufficient_overlap += 1;
 		    }
-		    n_inter += 1;
 		} else {
 		    trace!("No intersection: {} vs {} (time difference {})",f1.id,f2.id,min_delta_t);
 		}

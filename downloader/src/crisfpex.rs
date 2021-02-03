@@ -89,7 +89,10 @@ fn process(geo_fn:&str,footprints:&mut Vec<Footprint>)->Result<(),Box<dyn Error>
 }
 
 fn main()->Result<(),Box<dyn Error>> {
-    simple_logger::SimpleLogger::new().init()?;
+    simple_logger::SimpleLogger::new()
+	.with_level(log::LevelFilter::Info)
+	.init()?;
+
     let _ = hdf5::silence_errors();
 
     let args = App::new("crispfex")
