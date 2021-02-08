@@ -10,7 +10,7 @@ use std::fs::File;
 use std::io::{Write,BufWriter};
 use log::{trace,info};
 use clap::{Arg,App};
-use chrono::{Utc,TimeZone};
+use chrono::{Utc,TimeZone,NaiveDateTime,DateTime};
 use geo::{MultiPolygon,Polygon,LineString};
 use geo::algorithm::{area::Area,intersects::Intersects};
 use geo_clipper::Clipper;
@@ -72,19 +72,13 @@ fn main()->Result<(),Box<dyn Error>> {
 	     .help("Maximum mean time difference (s)"))
 	.arg(Arg::with_name("min_overlap").long("min-overlap").default_value("0.50")
 	     .help("Minimal overal pseudo-area fraction with respect to ROI"))
+	.arg(Arg::with_name("t0").long("t0").help("Start of time range").takes_value(true))
+	.arg(Arg::with_name("t1").long("t1").help("End of time range").takes_value(true))
 	.get_matches();
 
     let fp1_fn = args.value_of("input1").unwrap();
     let fp2_fn = args.value_of("input2").unwrap();
     let report_fn = args.value_of("report").unwrap();
-
-    info!("Loading first set of footprints from {}",fp1_fn);
-    let fps1 = Footprints::from_file(fp1_fn)?;
-    let n1 = fps1.footprints.len();
-
-    info!("Loading second set of footprints from {}",fp2_fn);
-    let fps2 = Footprints::from_file(fp2_fn)?;
-    let n2 = fps2.footprints.len();
 
     let min_overlap : f64 = args.value_of("min_overlap").unwrap().parse().expect("Invalid overlap threshold");
     let delta_t_max : f64 = args.value_of("delta_t").unwrap().parse().expect("Invalid time limit");
@@ -92,8 +86,22 @@ fn main()->Result<(),Box<dyn Error>> {
     let lat0 : f64 = args.value_of("lat0").unwrap().parse().expect("Invalid starting latitude");
     let lon1 : f64 = args.value_of("lon1").unwrap().parse().expect("Invalid ending longitude");
     let lat1 : f64 = args.value_of("lat1").unwrap().parse().expect("Invalid ending latitude");
-    info!("ROI: latitudes {} to {}, longitudes {} to {}",lat0,lat1,lon0,lon1);
+    let t0 =
+	if let Some(ts) = args.value_of("t0") {
+	    DateTime::<Utc>::from_utc(NaiveDateTime::parse_from_str(ts,"%Y-%m-%dT%H:%M:%S")?,Utc)
+		.timestamp_millis() as f64 / 1000.0
+	} else {
+	    0.0
+	};
+    let t1 =
+	if let Some(ts) = args.value_of("t1") {
+	    DateTime::<Utc>::from_utc(NaiveDateTime::parse_from_str(ts,"%Y-%m-%dT%H:%M:%S")?,Utc)
+		.timestamp_millis() as f64 / 1000.0
+	} else {
+	    std::f64::INFINITY
+	};
 
+    info!("ROI: latitudes {} to {}, longitudes {} to {}",lat0,lat1,lon0,lon1);
     let roi =
 	Polygon::new(
 	    LineString::from(vec![
@@ -105,7 +113,14 @@ fn main()->Result<(),Box<dyn Error>> {
 	    vec![]);
     let roi_area = roi.unsigned_area();
 
-    // let mut msvg = MiniSVG::new("out.svg",lon1-lon0,lat1-lat0,lon0,lat0).unwrap();
+    info!("Loading first set of footprints from {}",fp1_fn);
+    let fps1 = Footprints::from_file(fp1_fn)?;
+    let n1 = fps1.footprints.len();
+
+    info!("Loading second set of footprints from {}",fp2_fn);
+    let fps2 = Footprints::from_file(fp2_fn)?;
+    let n2 = fps2.footprints.len();
+
     let mut n_inter = 0;
 
     info!("Number of footprints in first file: {}",n1);
@@ -121,11 +136,15 @@ fn main()->Result<(),Box<dyn Error>> {
 
     for i1 in 0..n1 {
 	let f1 = &fps1.footprints[i1];
+	if !(t0 <= f1.time_interval.0 && f1.time_interval.1 < t1) {
+	    continue;
+	}
 	let f1_mp = clip_to_roi(&roi,&outline_to_multipolygon(&f1.outline));
-	// let t1 = f1.mean_time();
 	for i2 in 0..n2 {
 	    let f2 = &fps2.footprints[i2];
-	    // let t2 = f2.mean_time();
+	    if !(t0 <= f2.time_interval.0 && f2.time_interval.1 < t1) {
+		continue;
+	    }
 
 	    let min_delta_t =
 		if f1.time_interval.1 <= f2.time_interval.0 {
