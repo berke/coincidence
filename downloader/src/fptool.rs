@@ -43,16 +43,19 @@ impl Stats {
 }
 
 fn main()->Result<(),Box<dyn Error>> {
-    simple_logger::SimpleLogger::new()
-	.with_level(log::LevelFilter::Info)
-	.init()?;
-
     let args = App::new("fptool")
 	.arg(Arg::with_name("input").multiple(true))
 	.arg(Arg::with_name("concat").short("c").takes_value(true))
 	.arg(Arg::with_name("draw").short("d").takes_value(true))
 	.arg(Arg::with_name("export").short("e").takes_value(true))
+	.arg(Arg::with_name("verbose").short("v"))
 	.get_matches();
+
+    let verbose = args.is_present("verbose");
+
+    simple_logger::SimpleLogger::new()
+	.with_level(if verbose { log::LevelFilter::Trace } else { log::LevelFilter::Info })
+	.init()?;
 
     let mut footprints = Vec::new();
 
