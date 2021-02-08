@@ -25,22 +25,15 @@ fn process(geo_fn:&str,footprints:&mut Vec<Footprint>)->Result<(),Box<dyn Error>
 
     let iet_t0 = DateTime::<Utc>::from_utc(NaiveDate::from_ymd(1958,1,1).and_hms(0,0,0),Utc);
 
-    let gr = fd.group("/Data_Products/CrIS-SDR-GEO");
-    info!("Asked for group");
-    {
-	match &gr {
-	    Ok(_) => info!("OK"),
-	    Err(e) => info!("Error: {}",e)
-	}
-    }
-
-    // let gr = fd.group("/Data_Products/CrIS-SDR-GEO")?;
-    let gr = gr?;
+    let gr = fd.group("/Data_Products/CrIS-SDR-GEO")?;
     let instrument : &hdf5::types::FixedAscii<[u8;16]> = &gr.attribute("Instrument_Short_Name")?.read_raw()?[0];
     info!("Instrument: {}",instrument);
 
     for mem in gr.member_names()?.iter() {
 	trace!("Member: {}",mem);
+	if mem == "CrIS-SDR-GEO_Aggr" {
+	    continue;
+	}
 	let ds = gr.dataset(mem)?;
 	let mut outline = Vec::new();
 
