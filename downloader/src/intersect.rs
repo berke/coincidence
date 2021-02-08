@@ -57,8 +57,8 @@ fn main()->Result<(),Box<dyn Error>> {
 	.arg(Arg::with_name("report").short("r").long("report").required(true)
 	     .help("Path to output report to be created")
 	     .takes_value(true))
-	.arg(Arg::with_name("output_footprints").short("o").long("output-footprints")
-	     .help("Path to output footprints")
+	.arg(Arg::with_name("output_base").short("o").long("output-base")
+	     .help("Base name for footprint output files")
 	     .takes_value(true))
 	.arg(Arg::with_name("lon0").long("lon0").default_value("-5.0")
 	     .help("Starting longitude of ROI").allow_hyphen_values(true))
@@ -132,7 +132,7 @@ fn main()->Result<(),Box<dyn Error>> {
     let report_fd = File::create(report_fn)?;
     let mut report_buf = BufWriter::new(report_fd);
 
-    let mut footprints = Vec::new();
+    // let mut footprints = Vec::new();
 
     for i1 in 0..n1 {
 	let f1 = &fps1.footprints[i1];
@@ -177,12 +177,20 @@ fn main()->Result<(),Box<dyn Error>> {
 				 ts1,
 				 min_delta_t,area_ratio,f1.id,f2.id)?;
 
-			let mut f1c = f1.clone();
-			let mut f2c = f2.clone();
-			f1c.id = format!("{}/{}",n_inter,f1c.id);
-			f2c.id = format!("{}/{}",n_inter,f2c.id);
-			footprints.push(f1c);
-			footprints.push(f2c);
+			if let Some(fp_fn) = args.value_of("output_base") {
+			    let mut f1c = f1.clone();
+			    let mut f2c = f2.clone();
+			    let mut f1ci = f1.clone();
+			    let mut f2ci = f2.clone();
+			    f1c.id = format!("FP/{}/{}",n_inter,f1.id);
+			    f2c.id = format!("FP/{}/{}",n_inter,f2.id);
+			    f1ci.id = format!("ROI/{}/{}",n_inter,f1.id);
+			    f2ci.id = format!("ROI/{}/{}",n_inter,f2.id);
+			    f1ci.outline = poly_utils::multipolygon_to_vec(&f1_mp);
+			    f2ci.outline = poly_utils::multipolygon_to_vec(&f2_mp);
+			    let fps = Footprints{ footprints:vec![f1c,f2c,f1ci,f2ci] };
+			    fps.save_to_file(&format!("{}-{:05}.mpk",fp_fn,n_inter))?;
+			}
 			
 			n_inter += 1;
 		    } else {
@@ -198,10 +206,10 @@ fn main()->Result<(),Box<dyn Error>> {
     info!("Number of pairs rejected due to insufficient overlapping pseudo-area: {}",n_insufficient_overlap);
     info!("Number of intersections found: {}",n_inter);
 
-    if let Some(fp_fn) = args.value_of("output_footprints") {
-	let fps = Footprints{ footprints };
-	fps.save_to_file(fp_fn)?;
-    }
+    // if let Some(fp_fn) = args.value_of("output_base") {
+    // 	let fps = Footprints{ footprints };
+    // 	fps.save_to_file(fp_fn)?;
+    // }
     
     Ok(())
 }
