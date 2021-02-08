@@ -7,7 +7,7 @@ mod footprint;
 use std::error::Error;
 use log::{trace,info};
 use clap::{Arg,App};
-use chrono::{Utc,TimeZone};
+use chrono::{Utc,TimeZone,NaiveDateTime,DateTime};
 use footprint::Footprints;
 
 struct Stats {
@@ -49,6 +49,8 @@ fn main()->Result<(),Box<dyn Error>> {
 	.arg(Arg::with_name("draw").short("d").takes_value(true))
 	.arg(Arg::with_name("export").short("e").takes_value(true))
 	.arg(Arg::with_name("verbose").short("v"))
+	.arg(Arg::with_name("t_min").long("t-min").help("Start of time range").takes_value(true))
+	.arg(Arg::with_name("t_max").long("t-max").help("End of time range").takes_value(true))
 	.get_matches();
 
     let verbose = args.is_present("verbose");
@@ -62,6 +64,21 @@ fn main()->Result<(),Box<dyn Error>> {
     let mut lat_stats = Stats::new();
     let mut lon_stats = Stats::new();
 
+    let t_min =
+	if let Some(ts) = args.value_of("t_min") {
+	    DateTime::<Utc>::from_utc(NaiveDateTime::parse_from_str(ts,"%Y-%m-%dT%H:%M:%S")?,Utc)
+		.timestamp_millis() as f64 / 1000.0
+	} else {
+	    0.0
+	};
+    let t_max =
+	if let Some(ts) = args.value_of("t_max") {
+	    DateTime::<Utc>::from_utc(NaiveDateTime::parse_from_str(ts,"%Y-%m-%dT%H:%M:%S")?,Utc)
+		.timestamp_millis() as f64 / 1000.0
+	} else {
+	    std::f64::INFINITY
+	};
+
     let fp_fns = args.values_of("input").expect("Specify footprint files");
     for fp_fn in fp_fns {
 	info!("Footprint file {}",fp_fn);
@@ -71,6 +88,9 @@ fn main()->Result<(),Box<dyn Error>> {
 	for i in 0..m {
 	    let fp = &fps.footprints[i];
 	    let (t0,t1) = fp.time_interval;
+	    if !(t_min <= t0 && t1 < t_max) {
+		continue;
+	    }
 	    let ts0 = Utc.timestamp(t0.floor() as i64,(t0.fract() * 1e9 + 0.5).floor() as u32);
 	    let ts1 = Utc.timestamp(t1.floor() as i64,(t1.fract() * 1e9 + 0.5).floor() as u32);
 	    trace!("Time: {} to {}",ts0,ts1);
