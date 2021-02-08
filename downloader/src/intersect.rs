@@ -65,8 +65,8 @@ fn main()->Result<(),Box<dyn Error>> {
 	     .help("Maximum mean time difference (s)"))
 	.arg(Arg::with_name("min_overlap").long("min-overlap").default_value("0.50")
 	     .help("Minimal overal pseudo-area fraction with respect to ROI"))
-	.arg(Arg::with_name("t0").long("t0").help("Start of time range").takes_value(true))
-	.arg(Arg::with_name("t1").long("t1").help("End of time range").takes_value(true))
+	.arg(Arg::with_name("t_min").long("t-min").help("Start of time range").takes_value(true))
+	.arg(Arg::with_name("t_max").long("t-max").help("End of time range").takes_value(true))
 	.arg(Arg::with_name("verbose").short("v"))
 	.get_matches();
 
@@ -86,15 +86,15 @@ fn main()->Result<(),Box<dyn Error>> {
     let lat0 : f64 = args.value_of("lat0").unwrap().parse().expect("Invalid starting latitude");
     let lon1 : f64 = args.value_of("lon1").unwrap().parse().expect("Invalid ending longitude");
     let lat1 : f64 = args.value_of("lat1").unwrap().parse().expect("Invalid ending latitude");
-    let t0 =
-	if let Some(ts) = args.value_of("t0") {
+    let t_min =
+	if let Some(ts) = args.value_of("t_min") {
 	    DateTime::<Utc>::from_utc(NaiveDateTime::parse_from_str(ts,"%Y-%m-%dT%H:%M:%S")?,Utc)
 		.timestamp_millis() as f64 / 1000.0
 	} else {
 	    0.0
 	};
-    let t1 =
-	if let Some(ts) = args.value_of("t1") {
+    let t_max =
+	if let Some(ts) = args.value_of("t_max") {
 	    DateTime::<Utc>::from_utc(NaiveDateTime::parse_from_str(ts,"%Y-%m-%dT%H:%M:%S")?,Utc)
 		.timestamp_millis() as f64 / 1000.0
 	} else {
@@ -134,13 +134,13 @@ fn main()->Result<(),Box<dyn Error>> {
 
     for i1 in 0..n1 {
 	let f1 = &fps1.footprints[i1];
-	if !(t0 <= f1.time_interval.0 && f1.time_interval.1 < t1) {
+	if !(t_min <= f1.time_interval.0 && f1.time_interval.1 < t_max) {
 	    continue;
 	}
 	if let Some(f1_mp) = clip_to_roi(&roi,&outline_to_multipolygon(&f1.outline)) {
 	    for i2 in 0..n2 {
 		let f2 = &fps2.footprints[i2];
-		if !(t0 <= f2.time_interval.0 && f2.time_interval.1 < t1) {
+		if !(t_min <= f2.time_interval.0 && f2.time_interval.1 < t_max) {
 		    continue;
 		}
 
