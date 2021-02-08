@@ -104,11 +104,20 @@ fn main()->Result<(),Box<dyn Error>> {
 
     let mut footprints = Vec::new();
 
+    let re = regex::Regex::new(r"^IASI_xxx_1C_(M\d\d)_.*$")?;
+
     for nex_fn in nex_fns {
 	info!("Processing file {}",nex_fn);
 
-	let orbit = 0; // XXX
-	let platform = "METOP-*"; // XXX
+	// XXX: Have not been able to find an orbit number
+	// No mention of the word orbit in the IASI level 1 product format specification
+	// or in the provided Fortran interface
+	let orbit = 0;
+
+	let nex_path = PathBuf::from(nex_fn);
+	let nex_stem = MiscError::from_option(nex_path.file_stem(),"Cannot extract dataset name")?.to_string_lossy();
+	let caps = MiscError::from_option(re.captures(&nex_stem),"Cannot extract platform name")?;
+	let platform = caps.get(1).unwrap().as_str();
 	let instrument = "IASI";
 
 	let mut nexs = IASINexIterator::new(nex_fn)?;
@@ -139,7 +148,6 @@ fn main()->Result<(),Box<dyn Error>> {
 		if scan.len() > 0 {
 		    let igra = scan[0].igra;
 		    let npix = scan.len();
-		    info!("Granule {}: got {} pixels",igra,npix);
 
 		    let id = format!("{}/{}",dataset_id,igra);
 		    let mut ring = Vec::new();
@@ -159,7 +167,6 @@ fn main()->Result<(),Box<dyn Error>> {
 		    if amcut::cut_and_push(&mut outline,ring) {
 			ncross += 1;
 		    }
-		    // let outline = vec![vec![poly]];
 
 		    let t0 = scan.iter().fold(scan[0].t,|q,x| q.min(x.t));
 		    let t1 = scan.iter().fold(scan[0].t,|q,x| q.max(x.t));
