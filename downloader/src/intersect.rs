@@ -15,9 +15,8 @@ use geo::{MultiPolygon,Polygon,LineString};
 use geo::algorithm::{area::Area,intersects::Intersects};
 use geo_clipper::Clipper;
 
-use minisvg::MiniSVG;
 use footprint::Footprints;
-use poly_utils::{multipolygon_to_vec,clip_to_roi,outline_to_multipolygon,FACTOR};
+use poly_utils::{clip_to_roi,outline_to_multipolygon,FACTOR};
 
 fn check_intersection(m1:&MultiPolygon<f64>,m2:&MultiPolygon<f64>)->Option<(f64,MultiPolygon<f64>)> {
     if m1.intersects(m2) {
@@ -57,6 +56,9 @@ fn main()->Result<(),Box<dyn Error>> {
 	.arg(Arg::with_name("input2").short("i2").long("input2").required(true).takes_value(true))
 	.arg(Arg::with_name("report").short("r").long("report").required(true)
 	     .help("Path to output report to be created")
+	     .takes_value(true))
+	.arg(Arg::with_name("output_footprints").short("o").long("output-footprints")
+	     .help("Path to output footprints")
 	     .takes_value(true))
 	.arg(Arg::with_name("lon0").long("lon0").default_value("-5.0")
 	     .help("Starting longitude of ROI").allow_hyphen_values(true))
@@ -103,7 +105,7 @@ fn main()->Result<(),Box<dyn Error>> {
 	    vec![]);
     let roi_area = roi.unsigned_area();
 
-    let mut msvg = MiniSVG::new("out.svg",lon1-lon0,lat1-lat0,lon0,lat0).unwrap();
+    // let mut msvg = MiniSVG::new("out.svg",lon1-lon0,lat1-lat0,lon0,lat0).unwrap();
     let mut n_inter = 0;
 
     info!("Number of footprints in first file: {}",n1);
@@ -114,6 +116,8 @@ fn main()->Result<(),Box<dyn Error>> {
 
     let report_fd = File::create(report_fn)?;
     let mut report_buf = BufWriter::new(report_fd);
+
+    let mut footprints = Vec::new();
 
     for i1 in 0..n1 {
 	let f1 = &fps1.footprints[i1];
@@ -137,7 +141,7 @@ fn main()->Result<(),Box<dyn Error>> {
 	    if min_delta_t <= delta_t_max {
 		n_time_match += 1;
 		let f2_mp = clip_to_roi(&roi,&outline_to_multipolygon(&f2.outline));
-		if let Some((area,mp)) = check_intersection(&f1_mp,&f2_mp) {
+		if let Some((area,_mp)) = check_intersection(&f1_mp,&f2_mp) {
 		    let area_ratio = area / roi_area;
 		    if area_ratio > min_overlap {
 			let t0 = f1.time_interval.0.min(f2.time_interval.0);
@@ -153,9 +157,14 @@ fn main()->Result<(),Box<dyn Error>> {
 				 ts0,
 				 ts1,
 				 min_delta_t,area_ratio,f1.id,f2.id)?;
-			msvg.set_stroke(Some((0x000000,0.25,1.0)));
-			msvg.set_fill(Some((0xff0000,0.50)));
-			msvg.multi_polygon(&multipolygon_to_vec(&mp)).unwrap();
+
+			let mut f1c = f1.clone();
+			let mut f2c = f2.clone();
+			f1c.id = format!("{}/{}",n_inter,f1c.id);
+			f2c.id = format!("{}/{}",n_inter,f2c.id);
+			footprints.push(f1c);
+			footprints.push(f2c);
+			
 			n_inter += 1;
 		    } else {
 			n_insufficient_overlap += 1;
@@ -169,5 +178,11 @@ fn main()->Result<(),Box<dyn Error>> {
     info!("Number of pairs tested: {}",n_time_match);
     info!("Number of pairs rejected due to insufficient overlapping pseudo-area: {}",n_insufficient_overlap);
     info!("Number of intersections found: {}",n_inter);
+
+    if let Some(fp_fn) = args.value_of("output_footprints") {
+	let fps = Footprints{ footprints };
+	fps.save_to_file(fp_fn)?;
+    }
+    
     Ok(())
 }
