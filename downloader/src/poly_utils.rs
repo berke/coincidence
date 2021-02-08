@@ -27,7 +27,7 @@ pub fn multipolygon_to_vec(mp:&MultiPolygon<f64>)->Vec<Vec<Vec<(f64,f64)>>> {
     mp.iter().map(|p| polygon_to_vec(p,|q| q)).collect()
 }
 
-pub fn clip_to_roi(roi:&Polygon<f64>,mp:&MultiPolygon<f64>)->MultiPolygon<f64> {
+pub fn clip_to_roi(roi:&Polygon<f64>,mp:&MultiPolygon<f64>)->Option<MultiPolygon<f64>> {
     let mut res = Vec::new();
     for p in mp.iter() {
 	if roi.intersects(p) {
@@ -36,8 +36,12 @@ pub fn clip_to_roi(roi:&Polygon<f64>,mp:&MultiPolygon<f64>)->MultiPolygon<f64> {
 	    res.append(&mut inter);
 	}
     }
-    let mp_out : MultiPolygon<f64> = res.into();
-    mp_out
+    if res.len() > 0 {
+	let mp_out : MultiPolygon<f64> = res.into();
+	Some(mp_out)
+    } else {
+	None
+    }
 }
 
 pub fn rectangle((lon0,lat0):(f64,f64),(lon1,lat1):(f64,f64))->Polygon<f64> {
