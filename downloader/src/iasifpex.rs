@@ -72,7 +72,7 @@ impl Iterator for IASINexIterator {
 		let us : Vec<u32> = xs[0..10].iter().map(|x| x.parse::<u32>().expect("Invalid integer")).collect();
 		let fs : Vec<f64> = xs[10..].iter().map(|x| x.parse::<f64>().expect("Invalid integer")).collect();
 		let t_pixel = DateTime::<Utc>::from_utc(
-		    NaiveDate::from_ymd(us[2] as i32,us[3],us[4]).and_hms(us[5],us[6],us[7]),Utc);
+		    NaiveDate::from_ymd(us[2] as i32,us[3],us[4]).and_hms(us[6],us[7],us[8]),Utc);
 		let t = t_pixel.timestamp_millis() as f64 / 1000.0;
 		let igra = us[0];
 		let iscan = us[1];
