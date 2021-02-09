@@ -1,10 +1,15 @@
 #!/bin/zsh
 
+set -e
+
 INTERSECT=${INTERSECT:-target/release/intersect}
 IN1=${IN1:-iasi-all.mpk}
 IN2=${IN2:-tropomi-all.mpk}
-OUT=${OUT:-out.txt}
+OUT=${OUT:-out}
 DELTA_T=${DELTA_T:-3600.0}
+TAU=${TAU:-0.00}
+T_MIN=${T_MIN:-"2019-06-01T00:00:00"}
+T_MAX=${T_MAX:-"2019-10-01T00:00:00"}
 
 TARGET=${TARGET:-tar-sands}
 
@@ -33,4 +38,8 @@ $INTERSECT \
     --input2 $IN2 \
     --lat0 $LAT0 --lat1 $LAT1 --lon0 $LON0 --lon1 $LON1 \
     --delta-t $DELTA_T \
-    --report $OUT
+    --tau $TAU \
+    --report $OUT.txt \
+    --t-min $T_MIN \
+    --t-max $T_MAX \
+    --output-base $OUT
