@@ -48,6 +48,7 @@ fn main()->Result<(),Box<dyn Error>> {
 	.arg(Arg::with_name("concat").short("c").takes_value(true))
 	.arg(Arg::with_name("draw").short("d").takes_value(true))
 	.arg(Arg::with_name("export").short("e").takes_value(true))
+	.arg(Arg::with_name("dump").short("D").takes_value(true))
 	.arg(Arg::with_name("verbose").short("v"))
 	.arg(Arg::with_name("t_min").long("t-min").help("Start of time range").takes_value(true))
 	.arg(Arg::with_name("t_max").long("t-max").help("End of time range").takes_value(true))
@@ -117,6 +118,10 @@ fn main()->Result<(),Box<dyn Error>> {
     let fps = Footprints{ footprints };
     if let Some(draw_fn) = args.value_of("draw") {
 	fps.draw(draw_fn)?;
+    }
+
+    if let Some(dump_fn) = args.value_of("dump") {
+	fps.dump_to_file(dump_fn)?;
     }
 
     if let Some(path) = args.value_of("concat") {

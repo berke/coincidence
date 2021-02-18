@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::path::Path;
 use std::fs::File;
-use std::io::{BufReader,BufWriter};
+use std::io::{BufReader,BufWriter,Write};
 use serde::{Serialize,Deserialize};
 use chrono::{Utc,TimeZone};
 use geojson::{Feature,FeatureCollection,Geometry,Value};
@@ -102,6 +102,44 @@ impl Footprints {
 	    let tss = ts.format("%H:%M");
 	    ms.set_fill(Some((0x000000,1.00)));
 	    ms.text(lon0,lat0,0.2,&tss.to_string())?;
+	}
+	Ok(())
+    }
+
+    pub fn dump_to_file<P:AsRef<Path>>(&self,path:P)->Result<(),Box<dyn Error>> {
+	let fd = File::create(path)?;
+	let mut buf = BufWriter::new(fd);
+	let m = self.footprints.len();
+
+	for ifp in 0..m {
+	    writeln!(buf,"Footprint {}",ifp)?;
+	    let fp = &self.footprints[ifp];
+	    let npoly = fp.outline.len();
+	    writeln!(buf,"  Number of polygons: {}",npoly)?;
+	    for ipoly in 0..npoly {
+		let poly = &fp.outline[ipoly];
+		let nring = poly.len();
+		writeln!(buf,"  Polygon {}",ipoly)?;
+		writeln!(buf,"    Number of rings: {}",nring)?;
+		for iring in 0..nring {
+		    let ring = &poly[iring];
+		    let nvert = ring.len();
+		    writeln!(buf,"    Ring {} of polygon {}",iring,ipoly)?;
+		    writeln!(buf,"      Number of vertices: {}",nvert)?;
+		    writeln!(buf,"        {:4} {:4} {:4} {:10} {:10}","Poly","Ring","Vert","Lon","Lat")?;
+		    for ivert in 0..nvert {
+			writeln!(buf,"        {:4} {:4} {:4} {:+10.3} {:+10.3}",
+				 ipoly,
+				 iring,
+				 ivert,
+				 ring[ivert].0,
+				 ring[ivert].1)?;
+		    }
+		    writeln!(buf,"    End of ring {} of polygon {}",iring,ipoly)?;
+		}
+		writeln!(buf,"  End of polygon {}",ipoly)?;
+	    }
+	    writeln!(buf,"End of footprint {}",ifp)?;
 	}
 	Ok(())
     }
