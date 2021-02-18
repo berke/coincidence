@@ -2,7 +2,8 @@
 
 set -e
 
-WORK_DIR=${WORK_DIR:-/aux/berke/work}
+WORKER=${WORKER:-1}
+WORK_DIR=${WORK_DIR:-/aux/berke/work}/$WORKER
 LOG_FILE=$WORK_DIR/ph2dl.log
 ERROR_LOG_FILE=$WORK_DIR/ph2dl-errors.log
 FAILURE_DIR=$WORK_DIR/failures
@@ -10,9 +11,16 @@ OUT_DIR=${OUT_DIR:-/aux/berke/data/ph2coin}
 CACHEDIR=$WORK_DIR/cache
 CACHE_MAX_MB=3000
 EUMETSAT_BASE="https://api.eumetsat.int/data/download/products"
+S5P_AUTH="s5pguest:s5pguest"
 CURL_MAX_TIME=2000
+
 IASINAT2NEX=../iasi-reader/iasinat2nex
 IASIFPEX=target/release/iasifpex
+TROPOMIFPEX=target/release/tropomifpex
+S5PDOWNLOAD=target/release/s5pdownload
+
+IASI_ENABLE=${IASI_ENABLE:-1}
+TROPOMI_ENABLE=${TROPOMI_ENABLE:-1}
 
 num_errors=0
 
@@ -48,6 +56,14 @@ check_tools() {
 
     if [ ! -x $IASIFPEX ]; then
 	fail "Specify path to iasifpex tool in IASIFPEX"
+    fi
+
+    if [ ! -x $TROPOMIFPEX ]; then
+	fail "Specify path to tropomifpex tool in TROPOMIFPEX"
+    fi
+
+    if [ ! -x $S5PDOWNLOAD ]; then
+	fail "Specify path to s5pdownload tool in S5PDOWNLOAD"
     fi
 }
 
@@ -108,10 +124,121 @@ delete_work_dir() {
     fi
 }
 
+process() {
+    msg "Processor called"
+
+    if [ $processor_done = 1 ]; then
+	trace "Processor aleady ran, ignoring"
+	return
+    fi
+
+    case $FORMAT in
+	netCDF) ;;
+	*)
+	    error "Unsupported format $FORMAT"
+	    return
+	    ;;
+    esac
+
+    msg "Need netCDF file from $URL"
+
+    local nc_out=$CACHEDIR/$FILE
+    local nc_out_tmp=$CACHEDIR/$FILE.tmp
+
+    if [ -e $nc_out ]; then
+	trace "File present in cache"
+    else
+	trace "Re-downloading"
+	bump_cache
+	if curl \
+	       -u $S5P_AUTH \
+	       --max-time $CURL_MAX_TIME \
+	       --location \
+	       -f \
+	       -k \
+	       $URL \
+	       -o $nc_out_tmp ; then
+	    msg "Downloaded"
+	    mv $nc_out_tmp $nc_out
+	else
+	    error "Could not download $URL, RC $?"
+	    fail "Download error" # XXX
+	    processor_done=1
+	    processor_error=1
+	fi
+    fi
+
+    local mpk_out_tmp=$work/$id.mpk
+    local tropomifpex_log=$work/tropomifpex.log
+    if $TROPOMIFPEX $nc_out -o $mpk_out_tmp >$tropomifpex_log 2>&1 ; then
+	msg "Extracted footprints for $id into $mpk_out_tmp"
+	mkdir -p ${mpk_out:h}
+	mv $mpk_out_tmp $mpk_out
+	processor_error=0
+    else
+	error "Could not extract footprints, RC $?, see $tropomifpex_log"
+	processor_error=1
+    fi
+
+    processor_done=1
+}
+
 do_tropomi() {
+    if [ $TROPOMI_ENABLE = 0 ]; then
+	msg "TROPOMI disabled via TROPOMI_ENABLE"
+	return
+    fi
+
+    local work=$WORK_DIR/$id
+    local mpk_out=$OUT_DIR/tropomi/mpk/$id.mpk
+
+    if [ -e $mpk_out ]; then
+	trace "Footprints have already been extracted for $id"
+	return
+    fi
+
+    if [ -e $work ]; then
+	trace "Work directory $work already exists, deleting"
+	delete_work_dir
+    fi
+    
+    mkdir -p $work
+    touch $work/.this_is_a_work_dir
+
+    trace "Searching UUID for TROPOMI observation $id"
+
+    local s5pdownload_out=$work/process.sh
+    local s5pdownload_log=$work/s5pdownload.log
+    if $S5PDOWNLOAD --output $s5pdownload_out $id >$s5pdownload_log 2>&1 ; then
+	trace "Sourcing $s5pdownload_out"
+	processor_error=0
+	processor_done=0
+	source $s5pdownload_out
+	if [ $processor_done = 0 ]; then
+	    error "Did not complete"
+	    fail_work_dir
+	    return
+	fi
+	if [ $processor_error = 0 ]; then
+	    trace "Extraction completed"
+	else
+	    error "Extraction failed"
+	    fail_work_dir
+	    return
+	fi
+    else
+	error "Could not get UUID for $id, see $s5pdownload_log"
+	fail_work_dir
+	return
+    fi
 }
 
 do_iasi() {
+    if [ $IASI_ENABLE = 0 ]; then
+	msg "IASI disabled via IASI_ENABLE"
+	return
+    fi
+    
     local work=$WORK_DIR/$id
     local nex_out=$OUT_DIR/iasi/nex/$id.nex
     local mpk_out=$OUT_DIR/iasi/mpk/$id.mpk
@@ -123,7 +250,7 @@ do_iasi() {
 
     if [ -e $work ]; then
 	trace "Work directory $work already exists, deleting"
-	delete_work_dir $work
+	delete_work_dir
     fi
     
     mkdir -p $work
@@ -175,7 +302,7 @@ do_iasi() {
 	    mv $nex_out_tmp $nex_out
 	else
 	    error "Could not extract, RC $?, see $iasinat2nex_log"
-	    fail_work_dir $work
+	    fail_work_dir
 	    return
 	fi
     fi
@@ -188,19 +315,21 @@ do_iasi() {
 	mv $mpk_out_tmp $mpk_out
     else
 	error "Could not extract footprints, RC $?, see $iasifpex_log"
-	fail_work_dir $work
+	fail_work_dir
 	return
     fi
 
-    delete_work_dir $work
+    delete_work_dir
 }
 
 main() {
+    mkdir -p $WORK_DIR
+
     if [ -z "$INTER" ]; then
 	fail "Specify intersections file via environment variable INTER"
     fi
 
-    if [ -z "$EUMETSAT_API_TOKEN" ]; then
+    if [ $IASI_ENABLE = 1 -a -z "$EUMETSAT_API_TOKEN" ]; then
 	fail   "Specify EUMETSAT API token via environment variable EUMETSAT_API_TOKEN; see https://api.eumetsat.int/api-key/"
     fi
 
