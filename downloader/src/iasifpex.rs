@@ -45,6 +45,11 @@ impl IASINexIterator {
 	    row:0
 	})
     }
+
+    fn error(&self,e:Box<dyn Error>)->Option<IASINexRow> {
+	error!("Error at row {} in file {:?}: {}",self.row,self.path,e);
+	None
+    }
 }
 
 struct IASINexRow {
@@ -69,24 +74,35 @@ impl Iterator for IASINexIterator {
 			   xs.len(),self.path,self.row);
 		    return None
 		}
-		let us : Vec<u32> = xs[0..10].iter().map(|x| x.parse::<u32>().expect("Invalid integer")).collect();
-		let fs : Vec<f64> = xs[10..].iter().map(|x| x.parse::<f64>().expect("Invalid integer")).collect();
-		let t_pixel = DateTime::<Utc>::from_utc(
-		    NaiveDate::from_ymd(us[2] as i32,us[3],us[4]).and_hms(us[6],us[7],us[8]),Utc);
-		let t = t_pixel.timestamp_millis() as f64 / 1000.0;
-		let igra = us[0];
-		let iscan = us[1];
-		let outline = [(fs[0],fs[4]), (fs[1],fs[5]), (fs[2],fs[6]), (fs[3],fs[7])];
-		Some(IASINexRow{
-		    t,
-		    igra,
-		    iscan,
-		    outline})
+
+		match xs[0..10]
+		    .iter()
+		    .map(|x| MiscError::convert(x.parse::<i32>(),"Invalid integer"))
+		    .collect::<Result<Vec<i32>,_>>() {
+			Ok(us) => {
+			    match xs[10..]
+				.iter()
+				.map(|x| MiscError::convert(x.parse::<f64>(),"Invalid float"))
+				.collect::<Result<Vec<f64>,_>>() {
+				    Ok(fs) => {
+					let t_pixel = DateTime::<Utc>::from_utc(
+					    NaiveDate::from_ymd(us[2],us[3] as u32,us[4] as u32).and_hms(us[6] as u32,us[7] as u32,us[8] as u32),Utc);
+					let t = t_pixel.timestamp_millis() as f64 / 1000.0;
+					let igra = us[0] as u32;
+					let iscan = us[1] as u32;
+					let outline = [(fs[0],fs[4]), (fs[1],fs[5]), (fs[2],fs[6]), (fs[3],fs[7])];
+					Some(IASINexRow{ t,
+							 igra,
+							 iscan,
+							 outline})
+				    },
+				    Err(e) => return self.error(e)
+				}
+			},
+			Err(e) => return self.error(e)
+		    }
 	    },
-	    Err(e) => {
-		error!("Error reading file {:?}: {}",self.path,e);
-		None
-	    }
+	    Err(e) => return self.error(Box::new(e))
 	}
     }
 }
