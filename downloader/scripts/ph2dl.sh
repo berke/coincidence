@@ -13,6 +13,8 @@ CACHE_MAX_MB=3000
 EUMETSAT_BASE="https://api.eumetsat.int/data/download/products"
 S5P_AUTH="s5pguest:s5pguest"
 CURL_MAX_TIME=2000
+EUMETSAT_API_TOKEN_VALIDITY=3540
+EUMETSAT_API_AUTH=N2I1SmZoYjN5ZlVMTjVFNG9vQ2RScVdrQnA0YTpwTVgzQXBqZjlfM1pWWjNCT1RGaVphRFRPSDBh
 
 IASINAT2NEX=../iasi-reader/iasinat2nex
 IASIFPEX=target/release/iasifpex
@@ -233,6 +235,33 @@ do_tropomi() {
     fi
 }
 
+refresh_eumetsat_api_token() {
+    if curl -f -k -d "grant_type=client_credentials" \
+	    -H "Authorization: Basic $EUMETSAT_API_AUTH" \
+	    https://api.eumetsat.int/token >$WORK_DIR/eumetsat_api.token ; then
+	EUMETSAT_API_TOKEN=$(sed -ne 's/^.*"access_token":"\([0-9a-z-]\+\)\".*$/\1/p' $WORK_DIR/eumetsat_api.token)
+	EUMETSAT_API_TOKEN_T=$(date +%s)
+	msg "Got new EUMETSAT API token $EUMETSAT_API_TOKEN"
+    else
+	fail "Could not get token"
+    fi
+}
+
+check_eumetsat_api_token() {
+    if [ -z "$EUMETSAT_API_TOKEN" ]; then
+	trace "No EUMETSAT API token"
+	refresh_eumetsat_api_token
+    else
+	local t_now=$(date +%s)
+	if [ $t_now -gt $((EUMETSAT_API_TOKEN_T + EUMETSAT_API_TOKEN_VALIDITY)) ]; then
+	    trace "EUMETSAT API token expired or about to expire soon"
+	    refresh_eumetsat_api_token
+	else
+	    trace "EUMETSAT API token should be valid"
+	fi
+    fi
+}
+
 do_iasi() {
     if [ $IASI_ENABLE = 0 ]; then
 	msg "IASI disabled via IASI_ENABLE"
@@ -268,6 +297,7 @@ do_iasi() {
 	else
 	    trace "Re-downloading"
 	    bump_cache
+	    check_eumetsat_api_token
 	    if curl \
 		   --max-time $CURL_MAX_TIME \
 		   --location \
@@ -329,9 +359,9 @@ main() {
 	fail "Specify intersections file via environment variable INTER"
     fi
 
-    if [ $IASI_ENABLE = 1 -a -z "$EUMETSAT_API_TOKEN" ]; then
-	fail   "Specify EUMETSAT API token via environment variable EUMETSAT_API_TOKEN; see https://api.eumetsat.int/api-key/"
-    fi
+    # if [ $IASI_ENABLE = 1 -a -z "$EUMETSAT_API_TOKEN" ]; then
+    # 	fail   "Specify EUMETSAT API token via environment variable EUMETSAT_API_TOKEN; see https://api.eumetsat.int/api-key/"
+    # fi
 
     msg "Work directory: $WORK_DIR"
     msg "Intersections file: $INTER"
