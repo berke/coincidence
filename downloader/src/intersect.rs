@@ -193,10 +193,10 @@ fn main()->Result<(),Box<dyn Error>> {
 					let mut f2c = f2.clone();
 					let mut f1ci = f1.clone();
 					let mut f2ci = f2.clone();
-					f1c.id = format!("FP/{}/{}",n_inter,f1.id);
-					f2c.id = format!("FP/{}/{}",n_inter,f2.id);
-					f1ci.id = format!("ROI/{}/{}",n_inter,f1.id);
-					f2ci.id = format!("ROI/{}/{}",n_inter,f2.id);
+					f1c.id = format!("FP1/{}/{}",n_inter,f1.id);
+					f2c.id = format!("FP2/{}/{}",n_inter,f2.id);
+					f1ci.id = format!("ROI1/{}/{}",n_inter,f1.id);
+					f2ci.id = format!("ROI2/{}/{}",n_inter,f2.id);
 					f1ci.outline = poly_utils::multipolygon_to_vec(&f1_mp);
 					f2ci.outline = poly_utils::multipolygon_to_vec(&f2_mp);
 					let fps = Footprints{ footprints:vec![f1c,f2c,f1ci,f2ci] };
