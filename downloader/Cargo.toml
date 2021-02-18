@@ -29,6 +29,7 @@ simple_logger = { version = "^1.10" }
 #percent-encoding = { version = "^2.1" }
 geojson = { version = "^0.21" }
 regex = { version = "^1.3" }
+shell-escape = { version = "^0.1.5" }
 
 [[bin]]
 name = "intersect"
@@ -61,3 +62,7 @@ path = "src/iasifpex.rs"
 [[bin]]
 name = "fptool"
 path = "src/fptool.rs"
+
+[[bin]]
+name = "s5pdownload"
+path = "src/s5pdownload.rs"
