@@ -80,19 +80,8 @@ impl Footprints {
 
     pub fn draw<P:AsRef<Path>>(&self,path:P)->Result<(),Box<dyn Error>> {
 	let Footprints{ footprints } = self;
-	// let n_footprint = footprints.len();
-	// println!("Number of footprints found: {}",n_footprint);
 	let mut ms = MiniSVG::new(path,360.0,180.0,-180.0,-90.0)?;
 	for fp in footprints.iter() {
-	    // println!("Orbit: {}",f.orbit);
-	    // println!("ID: {}",f.id);
-	    // for a in f.outline.iter() {
-	    // 	// let mp : Vec<Vec<(f64,f64)>> =
-	    // 	//     a.iter().map(|b| {
-	    // 	// 	let c : Vec<(f64,f64)> = b.iter().map(|(x,y)| (x,y)).collect();
-	    // 	// 	c }).collect();
-	    // 	ms.polygon(&mp)?;
-	    // }
 	    ms.set_stroke(Some((0xff0000,0.01,1.0)));
 	    ms.set_fill(Some((0xffff80,0.25)));
 	    ms.multi_polygon(&fp.outline)?;
@@ -152,43 +141,41 @@ impl Footprints {
 	for fp in self.footprints.iter() {
 	    let t = fp.mean_time();
 	    let ts = Utc.timestamp(t.floor() as i64,(t.fract() * 1e9 + 0.5).floor() as u32);
-	    // let tss = ts.format("%H:%M");
-	    let tss = ts.to_string(); // format("%H:%M");
+	    let tss = ts.to_string();
 
-	    let mut first = true;
+	    let mut gjmpoly : Vec<Vec<Vec<Vec<f64>>>> = Vec::new();
 	    for poly in fp.outline.iter() {
+		let mut gjpoly : Vec<Vec<Vec<f64>>> = Vec::new();
 		for ring in poly.iter() {
-		    let properties =
-			if first {
-			    let mut props = Map::new();
-			    props.insert(
-				String::from("time"),
-				to_value(tss.to_string()).unwrap());
-			    props.insert(
-				String::from("id"),
-				to_value(&fp.id).unwrap());
-			    first = false;
-			    Some(props)
-			} else {
-			    None
-			};
-		    let geo =
-			Geometry::new(Value::Polygon(
-			    vec![
-				ring.iter()
-				    .map(|&(x,y)| vec![x,y])
-				    .collect()
-			    ]));
-		    let feature = Feature {
-			bbox:None,
-			geometry:Some(geo),
-			id:None,
-			properties,
-			foreign_members:None
-		    };
-		    features.push(feature);
+		    let gjring : Vec<Vec<f64>> = 
+			ring
+			.iter()
+			.map(|&(x,y)| vec![x,y])
+			.collect();
+		    gjpoly.push(gjring);
 		}
+		gjmpoly.push(gjpoly);
 	    }
+
+	    let properties = {
+		let mut props = Map::new();
+		props.insert(
+		    String::from("time"),
+		    to_value(tss.to_string()).unwrap());
+		props.insert(
+		    String::from("id"),
+		    to_value(&fp.id).unwrap());
+		Some(props)
+	    };
+	    let geo = Geometry::new(Value::MultiPolygon(gjmpoly));
+	    let feature = Feature {
+		bbox:None,
+		geometry:Some(geo),
+		id:None,
+		properties,
+		foreign_members:None
+	    };
+	    features.push(feature);
 	}
 	let fc = FeatureCollection {
 	    bbox:None,
