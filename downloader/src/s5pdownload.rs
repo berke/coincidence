@@ -245,7 +245,7 @@ fn main()->Result<(),Box<dyn Error>> {
 	let res = runtime.block_on(find_tropomi_download_info(&cfg,id))?;
 	for TropomiDownloadInfo{ id,filename,format,uuid } in res.iter() {
 	    let f = |x| shell_escape::unix::escape(Cow::from(x));
-	    let url = format!("{}/dhus/odata/v1/Products('{}')/\\$value",cfg.base_url,uuid);
+	    let url = format!("{}/dhus/odata/v1/Products('{}')/$value",cfg.base_url,uuid);
 	    write!(out_buf,"ID={}\nFILE={}\nFORMAT={}\nUUID={}\nURL={}\nprocess\n",
 		   f(id),
 		   f(filename),
