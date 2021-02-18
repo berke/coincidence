@@ -156,28 +156,24 @@ async fn find_tropomi_download_info(cfg:&Config,
 			    if let Some((name2,namespace)) = elems.pop() {
 				if name == name2 {
 				    if let Some(_pf) = namespace.get("opensearch") {
-					// println!("Prefix: {}",pf);
 					match name.local_name.as_str() {
 					    "entry" if q == State::Entry => {
-
 						match (&identifier,&format,&filename,&uuid) {
 						    (Some(idn),Some(fmt),Some(fnm),Some(uid)) => {
-							let tdi =
-							    TropomiDownloadInfo{
-								id:idn.clone(),
-								format:fmt.clone(),
-								filename:fnm.clone(),
-								uuid:uid.clone()
-							    };
-							info!("Found: {:?}",tdi);
-							res.push(tdi);
-							// if fmt == "netCDF" && idn == id {
-							//     info!("Found {}: UUID {}, filename {}",
-							// 	  id,uid,fnm);
-							// } else {
-							//     trace!("Mismatched entry: {}, {}, {}, {}",
-							// 	   idn,fmt,fnm,uid);
-							// }
+							if idn == id {
+							    let tdi =
+								TropomiDownloadInfo{
+								    id:idn.clone(),
+								    format:fmt.clone(),
+								    filename:fnm.clone(),
+								    uuid:uid.clone()
+								};
+							    info!("Found: {:?}",tdi);
+							    res.push(tdi);
+							} else {
+							    trace!("Mismatched entry: {}, {}, {}, {}",
+								   idn,fmt,fnm,uid);
+							}
 						    },
 						    _ => {
 							trace!("Incomplete entry");
