@@ -2,24 +2,12 @@
 
 set -e
 
-WORKER=${WORKER:-1}
-WORK_DIR=${WORK_DIR:-/aux/berke/work}/$WORKER
-LOG_FILE=$WORK_DIR/ph2dl.log
-ERROR_LOG_FILE=$WORK_DIR/ph2dl-errors.log
-FAILURE_DIR=$WORK_DIR/failures
-OUT_DIR=${OUT_DIR:-/aux/berke/data/ph2coin}
-CACHEDIR=$WORK_DIR/cache
-CACHE_MAX_MB=3000
-EUMETSAT_BASE="https://api.eumetsat.int/data/download/products"
-S5P_AUTH="s5pguest:s5pguest"
-CURL_MAX_TIME=2000
-EUMETSAT_API_TOKEN_VALIDITY=3540
-EUMETSAT_API_AUTH=N2I1SmZoYjN5ZlVMTjVFNG9vQ2RScVdrQnA0YTpwTVgzQXBqZjlfM1pWWjNCT1RGaVphRFRPSDBh
+if [ -z "$1" ]; then
+    echo "$0: Specify configuration as first argument" >&2
+    exit 1
+fi
 
-IASINAT2NEX=../iasi-reader/iasinat2nex
-IASIFPEX=target/release/iasifpex
-TROPOMIFPEX=target/release/tropomifpex
-S5PDOWNLOAD=target/release/s5pdownload
+source $1
 
 IASI_ENABLE=${IASI_ENABLE:-1}
 TROPOMI_ENABLE=${TROPOMI_ENABLE:-1}
@@ -404,10 +392,6 @@ main() {
     if [ -z "$INTER" ]; then
 	fail "Specify intersections file via environment variable INTER"
     fi
-
-    # if [ $IASI_ENABLE = 1 -a -z "$EUMETSAT_API_TOKEN" ]; then
-    # 	fail   "Specify EUMETSAT API token via environment variable EUMETSAT_API_TOKEN; see https://api.eumetsat.int/api-key/"
-    # fi
 
     msg "Work directory: $WORK_DIR"
     msg "Intersections file: $INTER"
