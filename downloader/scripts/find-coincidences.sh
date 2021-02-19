@@ -8,6 +8,7 @@ IN2=${IN2:-tropomi-all.mpk}
 OUT=${OUT:-out}
 DELTA_T=${DELTA_T:-3600.0}
 TAU=${TAU:-0.00}
+RHO=${RHO:-0.50}
 T_MIN=${T_MIN:-"2019-06-01T00:00:00"}
 T_MAX=${T_MAX:-"2019-10-01T00:00:00"}
 
@@ -26,6 +27,14 @@ case $TARGET in
 	LAT0=${LAT0:-56.6}
 	LAT1=${LAT1:-57.5}
 	;;
+    anywhere)
+	LON0=${LON0:--180.0}
+	LON1=${LON1:-180.0}
+	LAT0=${LAT0:--90.0}
+	LAT1=${LAT1:-90.0}
+	;;
+    specific)
+	;;
     *)
 	echo "$0: Unknown target $TARGET" >&2
 	exit 1
@@ -42,4 +51,5 @@ $INTERSECT \
     --report $OUT.txt \
     --t-min $T_MIN \
     --t-max $T_MAX \
+    --min-overlap $RHO \
     --output-base $OUT
