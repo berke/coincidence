@@ -25,6 +25,8 @@ IASI_ENABLE=${IASI_ENABLE:-1}
 TROPOMI_ENABLE=${TROPOMI_ENABLE:-1}
 
 num_errors=0
+tropomi_count=0
+iasi_count=0
 
 fail() {
     echo "FAILURE: $*" >&2
@@ -113,6 +115,26 @@ fail_work_dir() {
     mv $work $target
 }
 
+throttle_min=60
+throttle_max=3600
+throttle_current=$throttle_min
+
+throttle_fail() {
+    throttle_current=$((throttle_current * 2))
+    if [ $throttle_current -gt $throttle_max ]; then
+	throttle_current=$throttle_max
+    fi
+    msg "Throttling for $throttle_current seconds..."
+    sleep $throttle_current
+}
+
+throttle_ok() {
+    throttle_current=$((throttle_current / 2))
+    if [ $throttle_current -lt $throttle_min ]; then
+	throttle_current=$throttle_min
+    fi
+}
+
 delete_work_dir() {
     if [ -e $work/.this_is_a_work_dir ]; then
 	trace "Cleaning work directory $work"
@@ -152,22 +174,24 @@ process() {
     else
 	trace "Re-downloading"
 	bump_cache
-	if curl \
-	       -u $S5P_AUTH \
-	       --max-time $CURL_MAX_TIME \
-	       --location \
-	       -f \
-	       -k \
-	       $URL \
-	       -o $nc_out_tmp ; then
-	    msg "Downloaded"
-	    mv $nc_out_tmp $nc_out
-	else
-	    error "Could not download $URL, RC $?"
-	    fail "Download error" # XXX
-	    processor_done=1
-	    processor_error=1
-	fi
+	while true ; do 
+	    if curl \
+		   -u $S5P_AUTH \
+		   --max-time $CURL_MAX_TIME \
+		   --location \
+		   -f \
+		   -k \
+		   $URL \
+		   -o $nc_out_tmp ; then
+		msg "Downloaded"
+		mv $nc_out_tmp $nc_out
+		throttle_ok
+		break
+	    else
+		error "Could not download $URL, RC $?"
+		throttle_fail
+	    fi
+	done
     fi
 
     local mpk_out_tmp=$work/$id.mpk
@@ -196,6 +220,7 @@ do_tropomi() {
 
     if [ -e $mpk_out ]; then
 	trace "Footprints have already been extracted for $id"
+	tropomi_count=$((tropomi_count + 1))
 	return
     fi
 
@@ -223,16 +248,32 @@ do_tropomi() {
 	fi
 	if [ $processor_error = 0 ]; then
 	    trace "Extraction completed"
+	    tropomi_count=$((tropomi_count + 1))
 	else
 	    error "Extraction failed"
 	    fail_work_dir
-	    return
 	fi
     else
 	error "Could not get UUID for $id, see $s5pdownload_log"
 	fail_work_dir
-	return
     fi
+}
+
+eumetsat_api_token_drop_count=0
+
+drop_eumetsat_api_token() {
+    msg "Dropping EUMETSAT API token"
+    if [ $eumetsat_api_token_drop_count != 0 ] ; then
+	msg "Already dropped token, going into timeout"
+	throttle_fail
+    fi
+    EUMETSAT_API_TOKEN=
+    EUMETSAT_API_TOKEN_T=
+}
+
+confirm_eumetsat_api_token() {
+    eumetsat_api_token_drop_count=0
+    throttle_ok
 }
 
 refresh_eumetsat_api_token() {
@@ -274,6 +315,7 @@ do_iasi() {
 
     if [ -e $mpk_out ]; then
 	trace "Footprints have already been extracted for $id"
+	iasi_count=$((iasi_count + 1))
 	return
     fi
 
@@ -297,21 +339,24 @@ do_iasi() {
 	else
 	    trace "Re-downloading"
 	    bump_cache
-	    check_eumetsat_api_token
-	    if curl \
-		   --max-time $CURL_MAX_TIME \
-		   --location \
-		   -f \
-		   -k -H "Authorization: Bearer $EUMETSAT_API_TOKEN" \
-		   $EUMETSAT_BASE/$id \
-		   -o $natzip_out_tmp ; then
-		msg "Downloaded"
-		mv $natzip_out_tmp $natzip_out
-	    else
-		error "Could not download $url, RC $?"
-		fail "Download error" # XXX
-		return
-	    fi
+	    while true ; do
+		check_eumetsat_api_token
+		if curl \
+		       --max-time $CURL_MAX_TIME \
+		       --location \
+		       -f \
+		       -k -H "Authorization: Bearer $EUMETSAT_API_TOKEN" \
+		       $EUMETSAT_BASE/$id \
+		       -o $natzip_out_tmp ; then
+		    msg "Downloaded"
+		    mv $natzip_out_tmp $natzip_out
+		    confirm_eumetsat_api_token
+		    break
+		else
+		    error "Could not download $url, RC $?"
+		    drop_eumetsat_api_token
+		fi
+	    done
 	fi
 
 	local nat_out=$work/$id.nat
@@ -343,6 +388,7 @@ do_iasi() {
 	msg "Extracted footprints for $id into $mpk_out_tmp"
 	mkdir -p ${mpk_out:h}
 	mv $mpk_out_tmp $mpk_out
+	iasi_count=$((iasi_count + 1))
     else
 	error "Could not extract footprints, RC $?, see $iasifpex_log"
 	fail_work_dir
@@ -377,6 +423,9 @@ main() {
 	    *) fail "Could not figure out ID $id"
 	esac
     done
+
+    msg "Total TROPOMI count: $tropomi_count"
+    msg "Total IASI count: $iasi_count"
 }
 
 main
