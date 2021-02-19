@@ -52,6 +52,8 @@ fn main()->Result<(),Box<dyn Error>> {
 	.arg(Arg::with_name("verbose").short("v"))
 	.arg(Arg::with_name("t_min").long("t-min").help("Start of time range").takes_value(true))
 	.arg(Arg::with_name("t_max").long("t-max").help("End of time range").takes_value(true))
+	.arg(Arg::with_name("decimate").long("decimate").help("Keep only every Nth footprint")
+	     .default_value("1").takes_value(true))
 	.get_matches();
 
     let verbose = args.is_present("verbose");
@@ -80,7 +82,10 @@ fn main()->Result<(),Box<dyn Error>> {
 	    std::f64::INFINITY
 	};
 
+    let decimate : usize = args.value_of("decimate").unwrap().parse().expect("Invalid decimation value");
+
     let fp_fns = args.values_of("input").expect("Specify footprint files");
+    let mut n = 0;
     for fp_fn in fp_fns {
 	info!("Footprint file {}",fp_fn);
 	let fps = Footprints::from_file(fp_fn)?;
@@ -90,6 +95,11 @@ fn main()->Result<(),Box<dyn Error>> {
 	    let fp = &fps.footprints[i];
 	    let (t0,t1) = fp.time_interval;
 	    if !(t_min <= t0 && t1 < t_max) {
+		continue;
+	    }
+	    let skip = n % decimate != 0;
+	    n += 1;
+	    if skip {
 		continue;
 	    }
 	    let ts0 = Utc.timestamp(t0.floor() as i64,(t0.fract() * 1e9 + 0.5).floor() as u32);
