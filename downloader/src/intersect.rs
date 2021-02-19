@@ -136,93 +136,125 @@ fn main()->Result<(),Box<dyn Error>> {
     let report_fd = File::create(report_fn)?;
     let mut report_buf = BufWriter::new(report_fd);
 
+    let mut fps_in_roi1 = Vec::new();
+    let mut fps_in_roi2 = Vec::new();
+
     for i1 in 0..n1 {
 	let f1 = &fps1.footprints[i1];
 	if !(t_min <= f1.time_interval.0 && f1.time_interval.1 < t_max) {
 	    continue;
 	}
 	if let Some(f1_mp) = clip_to_roi(&roi,&outline_to_multipolygon(&f1.outline)) {
-	    for i2 in 0..n2 {
-		let f2 = &fps2.footprints[i2];
-		if !(t_min <= f2.time_interval.0 && f2.time_interval.1 < t_max) {
-		    continue;
-		}
-
-		let min_delta_t =
-		    if f1.time_interval.1 <= f2.time_interval.0 {
-			f2.time_interval.0 - f1.time_interval.1
-		    } else {
-			if f2.time_interval.1 <= f1.time_interval.0 {
-			    f1.time_interval.0 - f2.time_interval.1
-			} else {
-			    0.0
-			}
-		    };
-		
-		if min_delta_t <= delta_t_max {
-		    // Temporal overlap radio
-		    let tau =
-			if min_delta_t > 0.0 {
-			    0.0
-			} else {
-			    (f1.time_interval.1.min(f2.time_interval.1) - f1.time_interval.0.max(f2.time_interval.0)) /
-				(f1.time_interval.1.max(f2.time_interval.1) - f1.time_interval.0.min(f2.time_interval.0))
-			};
-		    n_time_match += 1;
-		    if tau >= tau_min {
-			if let Some(f2_mp) = clip_to_roi(&roi,&outline_to_multipolygon(&f2.outline)) {
-			    if let Some((area,_mp)) = check_intersection(&f1_mp,&f2_mp) {
-				let area_ratio = area / roi_area;
-				if area_ratio > min_overlap {
-				    let t0 = f1.time_interval.0.min(f2.time_interval.0);
-				    let t1 = f1.time_interval.1.max(f2.time_interval.1);
-				    let ts0 = Utc.timestamp(t0.floor() as i64,(t0.fract() * 1e9 + 0.5).floor() as u32);
-				    let ts1 = Utc.timestamp(t1.floor() as i64,(t1.fract() * 1e9 + 0.5).floor() as u32);
-				    trace!("F1 {:?} F2 {:?}",f1.time_interval,f2.time_interval);
-
-				    trace!("Intersection {:04}: {} vs {} (time difference {}, tau {}), pseudo-area ratio: {}, time: {} to {}",
-					   n_inter,f1.id,f2.id,min_delta_t,tau,area_ratio,ts0,ts1);
-				    writeln!(report_buf,"{:04}\t{}\t{}\t{:5.1}\t{:5.3}\t{:5.3}\t{}\t{}",
-					     n_inter,
-					     ts0,
-					     ts1,
-					     min_delta_t,tau,area_ratio,f1.id,f2.id)?;
-
-				    if let Some(fp_fn) = args.value_of("output_base") {
-					let mut f1c = f1.clone();
-					let mut f2c = f2.clone();
-					let mut f1ci = f1.clone();
-					let mut f2ci = f2.clone();
-					f1c.id = format!("FP1/{}/{}",n_inter,f1.id);
-					f2c.id = format!("FP2/{}/{}",n_inter,f2.id);
-					f1ci.id = format!("ROI1/{}/{}",n_inter,f1.id);
-					f2ci.id = format!("ROI2/{}/{}",n_inter,f2.id);
-					f1ci.outline = poly_utils::multipolygon_to_vec(&f1_mp);
-					f2ci.outline = poly_utils::multipolygon_to_vec(&f2_mp);
-					let fps = Footprints{ footprints:vec![f1c,f2c,f1ci,f2ci] };
-					fps.save_to_file(&format!("{}-{:05}.mpk",fp_fn,n_inter))?;
-				    }
-				    
-				    n_inter += 1;
-				} else {
-				    n_insufficient_overlap += 1;
-				}
-			    } else {
-				trace!("No intersection: {} vs {} (time difference {})",f1.id,f2.id,min_delta_t);
-			    }
-			} else {
-			    trace!("Rejected {} as it does not meet the ROI",f2.id);
-			}
-		    } else {
-			n_insufficient_time_overlap += 1;
-			trace!("Rejected {} vs {} due to tau = {}",f1.id,f2.id,tau);
-		    }
-		} else {
-		    trace!("Rejected {} vs {} due to delta_t = {}",f1.id,f2.id,min_delta_t);
-		}
-	    }
+	    fps_in_roi1.push((i1,f1_mp));
 	} else {
 	    trace!("Rejected {} as it does not meet the ROI",f1.id);
+	}
+    }
+
+    for i2 in 0..n2 {
+	let f2 = &fps2.footprints[i2];
+	if !(t_min <= f2.time_interval.0 && f2.time_interval.1 < t_max) {
+	    continue;
+	}
+
+	if let Some(f2_mp) = clip_to_roi(&roi,&outline_to_multipolygon(&f2.outline)) {
+	    fps_in_roi2.push((i2,f2_mp));
+	} else {
+	    trace!("Rejected {} as it does not meet the ROI",f2.id);
+	}
+    }
+
+    info!("Number of footprints in first file meeting the ROI: {} ({:5.2}%)",
+	  fps_in_roi1.len(),
+	  100.0*fps_in_roi1.len() as f64/n1 as f64);
+    info!("Number of footprints in second file meeting the ROI: {} ({:5.2}%)",
+	  fps_in_roi2.len(),
+	  100.0*fps_in_roi2.len() as f64/n2 as f64);
+
+    for &(i1,ref f1_mp) in fps_in_roi1.iter() {
+	let f1 = &fps1.footprints[i1];
+	for &(i2,ref f2_mp) in fps_in_roi2.iter() {
+	    let f2 = &fps2.footprints[i2];
+
+	    let min_delta_t =
+		if f1.time_interval.1 <= f2.time_interval.0 {
+		    f2.time_interval.0 - f1.time_interval.1
+		} else {
+		    if f2.time_interval.1 <= f1.time_interval.0 {
+			f1.time_interval.0 - f2.time_interval.1
+		    } else {
+			0.0
+		    }
+		};
+	    
+	    if min_delta_t <= delta_t_max {
+		// Temporal overlap radio
+		let tau =
+		    if min_delta_t > 0.0 {
+			0.0
+		    } else {
+			(f1.time_interval.1.min(f2.time_interval.1) - f1.time_interval.0.max(f2.time_interval.0)) /
+			    (f1.time_interval.1.max(f2.time_interval.1) - f1.time_interval.0.min(f2.time_interval.0))
+		    };
+		n_time_match += 1;
+		if tau >= tau_min {
+		    if let Some((area,_mp)) = check_intersection(f1_mp,f2_mp) {
+			let area_ratio = area / roi_area;
+			if area_ratio > min_overlap {
+			    let t0 = f1.time_interval.0.min(f2.time_interval.0);
+			    let t1 = f1.time_interval.1.max(f2.time_interval.1);
+			    let ts0 = Utc.timestamp(t0.floor() as i64,(t0.fract() * 1e9 + 0.5).floor() as u32);
+			    let ts1 = Utc.timestamp(t1.floor() as i64,(t1.fract() * 1e9 + 0.5).floor() as u32);
+			    trace!("F1 {:?} F2 {:?}",f1.time_interval,f2.time_interval);
+
+			    trace!("Intersection {:04}: {} vs {} (time difference {}, tau {}), pseudo-area ratio: {}, time: {} to {}",
+				   n_inter,f1.id,f2.id,min_delta_t,tau,area_ratio,ts0,ts1);
+			    writeln!(report_buf,"{:04}\t{}\t{}\t{:5.1}\t{:5.3}\t{:5.3}\t{}\t{}",
+				     n_inter,
+				     ts0,
+				     ts1,
+				     min_delta_t,tau,area_ratio,f1.id,f2.id)?;
+
+			    if let Some(fp_fn) = args.value_of("output_base") {
+				let mut f1c = f1.clone();
+				let mut f2c = f2.clone();
+				let mut f1ci = f1.clone();
+				let mut f2ci = f2.clone();
+				f1c.id = format!("FP1/{}/{}",n_inter,f1.id);
+				f2c.id = format!("FP2/{}/{}",n_inter,f2.id);
+				f1ci.id = format!("ROI1/{}/{}",n_inter,f1.id);
+				f2ci.id = format!("ROI2/{}/{}",n_inter,f2.id);
+				f1ci.outline = poly_utils::multipolygon_to_vec(f1_mp);
+				f2ci.outline = poly_utils::multipolygon_to_vec(f2_mp);
+				let fps = Footprints{ footprints:vec![f1c,f2c,f1ci,f2ci] };
+				fps.save_to_file(&format!("{}-{:05}.mpk",fp_fn,n_inter))?;
+			    }
+			    
+			    n_inter += 1;
+			} else {
+			    n_insufficient_overlap += 1;
+			}
+		    } else {
+			trace!("No intersection: {} vs {} (time difference {})",f1.id,f2.id,min_delta_t);
+
+			if let Some(fp_fn) = args.value_of("output_base") {
+			    let mut f1c = f1.clone();
+			    let mut f2c = f2.clone();
+			    f1c.id = format!("FP1/{}",f1.id);
+			    f2c.id = format!("FP2/{}",f2.id);
+			    f1c.outline = poly_utils::multipolygon_to_vec(f1_mp);
+			    f2c.outline = poly_utils::multipolygon_to_vec(f2_mp);
+			    let fps = Footprints{ footprints:vec![f1c,f2c] };
+			    fps.save_to_file(&format!("{}-no_inter-{:05}-{:05}.mpk",fp_fn,i1,i2))?;
+			}
+		    }
+		} else {
+		    n_insufficient_time_overlap += 1;
+		    trace!("Rejected {} vs {} due to tau = {}",f1.id,f2.id,tau);
+		}
+	    } else {
+		trace!("Rejected {} vs {} due to delta_t = {}",f1.id,f2.id,min_delta_t);
+	    }
 	}
     }
     info!("Number of pairs tested: {}",n_time_match);
