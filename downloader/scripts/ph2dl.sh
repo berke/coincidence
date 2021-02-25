@@ -265,12 +265,12 @@ confirm_eumetsat_api_token() {
 }
 
 refresh_eumetsat_api_token() {
-    if curl -f -k -d "grant_type=client_credentials" \
+    if curl -q -f -k -d "grant_type=client_credentials" \
 	    -H "Authorization: Basic $EUMETSAT_API_AUTH" \
 	    https://api.eumetsat.int/token >$WORK_DIR/eumetsat_api.token ; then
 	EUMETSAT_API_TOKEN=$(sed -ne 's/^.*"access_token":"\([0-9a-z-]\+\)\".*$/\1/p' $WORK_DIR/eumetsat_api.token)
-	EUMETSAT_API_TOKEN_T=$(date +%s)
-	msg "Got new EUMETSAT API token $EUMETSAT_API_TOKEN"
+	EUMETSAT_API_TOKEN_T=$(( $(date +%s) + $(sed -ne 's/^.*"expires_in":\([0-9]\+\).*$/\1/p' $WORK_DIR/eumetsat_api.token)))
+	msg "Got new EUMETSAT API token $EUMETSAT_API_TOKEN valid until $(date -d @$EUMETSAT_API_TOKEN_T)"
     else
 	fail "Could not get token"
     fi
@@ -282,7 +282,7 @@ check_eumetsat_api_token() {
 	refresh_eumetsat_api_token
     else
 	local t_now=$(date +%s)
-	if [ $t_now -gt $((EUMETSAT_API_TOKEN_T + EUMETSAT_API_TOKEN_VALIDITY)) ]; then
+	if [ $t_now -gt $EUMETSAT_API_TOKEN_T ]; then
 	    trace "EUMETSAT API token expired or about to expire soon"
 	    refresh_eumetsat_api_token
 	else
