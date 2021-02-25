@@ -4,6 +4,7 @@ DATA_DIR=${DATA_DIR:-/aux/berke/data/ph2coin}
 OUT=${OUT:-out}
 FPTOOL=${FPTOOL:-target/release/fptool}
 RHO=${RHO:-0.0}
+DELTA_T=${DELTA_T:-3600}
 
 fail() {
     echo "FAILURE: $*" >&2
@@ -40,22 +41,26 @@ main() {
 	K2=$kind
 	IN1=$DATA_DIR/$K1/mpk/$ID1.mpk
 	IN2=$DATA_DIR/$K2/mpk/$ID2.mpk
-	if [ -e $IN1 -a -e $IN2 ]; then
-	    local out_base=$OUT/inter-$NUM
-	    mkdir -p $OUT
+	if [ -e $IN1 ]; then
+	    if [ -e $IN2 ]; then
+		local out_base=$OUT/inter-$NUM
+		mkdir -p $OUT
 
-	    if RHO=$RHO OUT=$out_base IN1=$IN1 IN2=$IN2 TARGET=$TARGET scripts/find-coincidences.sh >$out_base.log 2>&1 ; then
-		if [ -s $out_base.txt ]; then
-		    msg "Intersections found for $NUM ($ID1 vs $ID2)"
-		    echo $NUM $ID1 $ID2 >>$OUT/found.dat
+		if RHO=$RHO DELTA_T=$DELTA_T OUT=$out_base IN1=$IN1 IN2=$IN2 TARGET=$TARGET scripts/find-coincidences.sh >$out_base.log 2>&1 ; then
+		    if [ -s $out_base.txt ]; then
+			msg "Intersections found for $NUM ($ID1 vs $ID2)"
+			echo $NUM $ID1 $ID2 >>$OUT/found.dat
+		    else
+			msg "No intersections found for $NUM ($ID1 vs $ID2)"
+		    fi
 		else
-		    msg "No intersections found for $NUM ($ID1 vs $ID2)"
+		    fail "Could not run coincidence script, see $out_base.log"
 		fi
 	    else
-		fail "Could not run coincidence script, see $out_base.log"
+		msg "Skipping $NUM because first input file $IN1 is missing"
 	    fi
 	else
-	    msg "Skipping $NUM because one ore both input files are missing"
+	    msg "Skipping $NUM because second input file $IN2 is missing"
 	fi
     done
 }

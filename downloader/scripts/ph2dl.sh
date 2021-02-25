@@ -320,9 +320,9 @@ do_iasi() {
 
 	msg "Need NAT file from $url"
 
-	local natzip_out=$CACHEDIR/$id
-	local natzip_out_tmp=$CACHEDIR/$id.tmp
-	if [ -e $natzip_out ]; then
+	local nat_out=$CACHEDIR/$id
+	local nat_out_tmp=$CACHEDIR/$id.tmp
+	if [ -e $nat_out ]; then
 	    trace "File present in cache"
 	else
 	    trace "Re-downloading"
@@ -334,10 +334,10 @@ do_iasi() {
 		       --location \
 		       -f \
 		       -k -H "Authorization: Bearer $EUMETSAT_API_TOKEN" \
-		       $EUMETSAT_BASE/$id \
-		       -o $natzip_out_tmp ; then
+		       "$EUMETSAT_BASE/$id/entry?name=$id.nat" \
+		       -o $nat_out_tmp ; then
 		    msg "Downloaded"
-		    mv $natzip_out_tmp $natzip_out
+		    mv $nat_out_tmp $nat_out
 		    confirm_eumetsat_api_token
 		    break
 		else
@@ -345,16 +345,6 @@ do_iasi() {
 		    drop_eumetsat_api_token
 		fi
 	    done
-	fi
-
-	local nat_out=$work/$id.nat
-	msg "Unzipping..."
-	if unzip -n -qq $natzip_out $id.nat -d $work ; then
-	    trace "Unzipped into $nat_out"
-	else
-	    error "Could not unzip $id, RC $?";
-	    fail_work_dir $work
-	    return
 	fi
 
 	local iasinat2nex_log=$work/iasinat2nex.log
