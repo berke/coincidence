@@ -51,7 +51,7 @@ fn main()->Result<(),Box<dyn Error>> {
 	let orbit = fd.attribute("orbit")?.read_raw::<i32>()?[0] as usize;
 	info!("Orbit: {}",orbit);
 
-	let lats_dyn : ArrayD<f32> = fd.dataset("/BAND7_RADIANCE/STANDARD_MODE/GEODATA/latitude_bounds")?.read_dyn()?;
+	let lats_dyn : ArrayD<f32> = fd.dataset("/PRODUCT/SUPPORT_DATA/GEOLOCATIONS/latitude_bounds")?.read_dyn()?;
 	let lat_dims = lats_dyn.dim();
 	info!("Latitude bound dimensions: {:?}",lat_dims);
 	let ngra = lat_dims[0];
@@ -63,11 +63,11 @@ fn main()->Result<(),Box<dyn Error>> {
 	info!("Number of pixels: {}",npix);
 	info!("Number of vertices: {}",nvert);
 	let lats = lats_dyn.into_shape((ngra,nscan,npix,nvert))?;
-	let lons : Array4<f32> = fd.dataset("/BAND7_RADIANCE/STANDARD_MODE/GEODATA/longitude_bounds")?.read_dyn()?.into_shape((ngra,nscan,npix,nvert))?;
+	let lons : Array4<f32> = fd.dataset("/PRODUCT/SUPPORT_DATA/GEOLOCATIONS/longitude_bounds")?.read_dyn()?.into_shape((ngra,nscan,npix,nvert))?;
 	info!("Getting granule base times");
-	let times : Array1<i32> = fd.dataset("/BAND7_RADIANCE/STANDARD_MODE/OBSERVATIONS/time")?.read_1d()?;
+	let times : Array1<i32> = fd.dataset("/PRODUCT/time")?.read_1d()?;
 	info!("Getting scan delta times");
-	let delta_times : Array2<i32> = fd.dataset("/BAND7_RADIANCE/STANDARD_MODE/OBSERVATIONS/delta_time")?.read_2d()?;
+	let delta_times : Array2<i32> = fd.dataset("/PRODUCT/delta_time")?.read_2d()?;
 	let tropomi_t0 = DateTime::<Utc>::from_utc(NaiveDate::from_ymd(2010,1,1).and_hms(0,0,0),Utc);
 
 	let t_exp = 0.538306;

@@ -182,6 +182,11 @@ process() {
 	done
     fi
 
+    if [ ! -z "$TROPOMI_SAVE" ]; then
+	if [ ! -e $TROPOMI_SAVE/$FILE ]; then
+	    cp -l $nc_out $TROPOMI_SAVE/$FILE
+	fi
+    fi
     local mpk_out_tmp=$work/$id.mpk
     local tropomifpex_log=$work/tropomifpex.log
     if $TROPOMIFPEX $nc_out -o $mpk_out_tmp >$tropomifpex_log 2>&1 ; then
@@ -220,11 +225,13 @@ do_tropomi() {
     mkdir -p $work
     touch $work/.this_is_a_work_dir
 
-    trace "Searching UUID for TROPOMI observation $id"
+    orbit=$(echo -n $id | cut -c53-57)
+
+    trace "Searching UUID for TROPOMI observation $id, orbit $orbit"
 
     local s5pdownload_out=$work/process.sh
     local s5pdownload_log=$work/s5pdownload.log
-    if $S5PDOWNLOAD --output $s5pdownload_out $id >$s5pdownload_log 2>&1 ; then
+    if $S5PDOWNLOAD --output $s5pdownload_out $orbit >$s5pdownload_log 2>&1 ; then
 	trace "Sourcing $s5pdownload_out"
 	processor_error=0
 	processor_done=0

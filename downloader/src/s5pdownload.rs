@@ -30,7 +30,7 @@ struct TropomiDownloadInfo {
 }
 
 async fn find_tropomi_download_info(cfg:&Config,
-				    id:&str)->Result<Vec<TropomiDownloadInfo>,Box<dyn Error>> {
+				    orbit:u32)->Result<Vec<TropomiDownloadInfo>,Box<dyn Error>> {
     #[derive(Copy,Clone,PartialEq,Eq,Debug)]
     enum State {
 	Init,
@@ -59,7 +59,8 @@ async fn find_tropomi_download_info(cfg:&Config,
 	url.path_segments_mut()
 	    .map_err(|_| "This URL cannot be a base")?
 	    .extend(&["dhus","search"]);
-	let query = format!("{}",id);
+	//let query = format!("{}",id);
+	let query = format!("platformname:Sentinel-5 AND producttype:L2__CH4___ AND orbitnumber:{}",orbit);
 	MiscError::convert(url.set_username(&cfg.user_name),"Cannot set user name")?;
 	if let Some(pwd) = &cfg.password {
 	    MiscError::convert(url.set_password(Some(&pwd)),"Cannot set password")?;
@@ -160,7 +161,7 @@ async fn find_tropomi_download_info(cfg:&Config,
 					    "entry" if q == State::Entry => {
 						match (&identifier,&format,&filename,&uuid) {
 						    (Some(idn),Some(fmt),Some(fnm),Some(uid)) => {
-							if idn == id {
+							// if idn == id {
 							    let tdi =
 								TropomiDownloadInfo{
 								    id:idn.clone(),
@@ -170,10 +171,10 @@ async fn find_tropomi_download_info(cfg:&Config,
 								};
 							    info!("Found: {:?}",tdi);
 							    res.push(tdi);
-							} else {
-							    trace!("Mismatched entry: {}, {}, {}, {}",
-								   idn,fmt,fnm,uid);
-							}
+							// } else {
+							//     trace!("Mismatched entry: {}, {}, {}, {}",
+							// 	   idn,fmt,fnm,uid);
+							// }
 						    },
 						    _ => {
 							trace!("Incomplete entry");
@@ -217,7 +218,7 @@ async fn find_tropomi_download_info(cfg:&Config,
 fn main()->Result<(),Box<dyn Error>> {
     let args = App::new("s5pdownload")
 	.arg(Arg::with_name("out").short("o").long("output").value_name("PATH").takes_value(true).required(true))
-	.arg(Arg::with_name("id").multiple(true).help("Product IDs to download"))
+	.arg(Arg::with_name("orbit").multiple(true).help("Orbits to download"))
 	.arg(Arg::with_name("verbose").short("v"))
 	.get_matches();
 
@@ -227,7 +228,10 @@ fn main()->Result<(),Box<dyn Error>> {
 	.with_level(if verbose { log::LevelFilter::Trace } else { log::LevelFilter::Info })
 	.init()?;
 
-    let ids = args.values_of("id").expect("Specify product IDs");
+    let orbits : Vec<u32> =
+	args.values_of("orbit").expect("Specify orbit numbers")
+	.map(|o| o.parse::<u32>().unwrap())
+	.collect();
     let out_fn = args.value_of("out").expect("Specify output path");
 
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
@@ -241,8 +245,8 @@ fn main()->Result<(),Box<dyn Error>> {
 
     let out_fd = File::create(out_fn)?;
     let mut out_buf = BufWriter::new(out_fd);
-    for id in ids {
-	let res = runtime.block_on(find_tropomi_download_info(&cfg,id))?;
+    for orbit in orbits {
+	let res = runtime.block_on(find_tropomi_download_info(&cfg,orbit))?;
 	for TropomiDownloadInfo{ id,filename,format,uuid } in res.iter() {
 	    let f = |x| shell_escape::unix::escape(Cow::from(x));
 	    let url = format!("{}/dhus/odata/v1/Products('{}')/$value",cfg.base_url,uuid);
