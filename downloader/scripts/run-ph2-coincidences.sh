@@ -1,6 +1,6 @@
 #!/bin/zsh
 
-DATA_DIR=${DATA_DIR:-/aux/berke/data/ph2coin}
+DATA_DIR=${DATA_DIR:-/aux/data/ph2coin}
 OUT=${OUT:-out}
 FPTOOL=${FPTOOL:-target/release/fptool}
 RHO=${RHO:-0.0}

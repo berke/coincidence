@@ -27,6 +27,12 @@ case $TARGET in
 	LAT0=${LAT0:-56.6}
 	LAT1=${LAT1:-57.5}
 	;;
+    siberia)
+	LON0=${LON0:-62.0}
+	LON1=${LON1:-82.0}
+	LAT0=${LAT0:-53.0}
+	LAT1=${LAT1:-63.0}
+	;;
     anywhere)
 	LON0=${LON0:--180.0}
 	LON1=${LON1:-180.0}

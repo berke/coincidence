@@ -2,10 +2,10 @@
 
 set -e
 
-DATA_DIR=${DATA_DIR:-/aux/berke/data/}
+DATA_DIR=${DATA_DIR:-/aux/data/}
 OUT=${OUT_DIR:-work}
 T_MIN=${T_MIN:-"2019-06-01T00:00:00"}
-T_MAX=${T_MAX:-"2019-10-01T00:00:00"}
+T_MAX=${T_MAX:-"2019-09-01T00:00:00"}
 
 mkdir -p $OUT
 
@@ -17,11 +17,12 @@ if [ ! -e $OUT/iasi-all.mpk ]; then
     target/release/fptool $DATA_DIR/coincidences/*/iasi-*.mpk -c $OUT/iasi-all.mpk
 fi
 
-if [ ! -e $OUT/cris-all.mpk ]; then
-    target/release/crisfpex $DATA_DIR/cris/GCRSO_*.h5 -o $OUT/cris-all.mpk
-fi
+# if [ ! -e $OUT/cris-all.mpk ]; then
+#     target/release/crisfpex $DATA_DIR/cris/GCRSO_*.h5 -o $OUT/cris-all.mpk
+# fi
 
-for target in four-corners tar-sands ; do
+#for target in siberia four-corners tar-sands ; do
+for target in siberia ; do
     if [ ! -e $OUT/inter-$target.txt ]; then
 	IN1=$OUT/tropomi-all.mpk \
 	   IN2=$OUT/iasi-all.mpk \

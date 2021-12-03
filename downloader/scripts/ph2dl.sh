@@ -316,7 +316,7 @@ do_iasi() {
     touch $work/.this_is_a_work_dir
 
     if [ ! -e $nex_out ]; then
-	local url=$EUMETSAT_BASE/$id
+	local url="$EUMETSAT_BASE/$id/entry?name=$id.nat"
 
 	msg "Need NAT file from $url"
 
@@ -334,7 +334,7 @@ do_iasi() {
 		       --location \
 		       -f \
 		       -k -H "Authorization: Bearer $EUMETSAT_API_TOKEN" \
-		       "$EUMETSAT_BASE/$id/entry?name=$id.nat" \
+		       "$url&access_token=$EUMETSAT_API_TOKEN" \
 		       -o $nat_out_tmp ; then
 		    msg "Downloaded"
 		    mv $nat_out_tmp $nat_out
@@ -342,6 +342,7 @@ do_iasi() {
 		    break
 		else
 		    error "Could not download $url, RC $?"
+		    sleep 5
 		    drop_eumetsat_api_token
 		fi
 	    done

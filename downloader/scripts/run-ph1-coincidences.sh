@@ -2,10 +2,10 @@
 
 set -e
 
-DATA_DIR=${DATA_DIR:-/aux/berke/data/}
-OUT=${OUT_DIR:-work5}
+DATA_DIR=${DATA_DIR:-/aux/data/}
+OUT=${OUT_DIR:-work}
 T_MIN=${T_MIN:-"2019-06-01T00:00:00"}
-T_MAX=${T_MAX:-"2019-10-01T00:00:00"}
+T_MAX=${T_MAX:-"2019-09-01T00:00:00"}
 
 mkdir -p $OUT
 
@@ -21,9 +21,10 @@ fi
 #     target/release/crisfpex $DATA_DIR/cris/GCRSO_*.h5 -o $OUT/cris-all.mpk
 # fi
 
+# four-corners 4800
+# tar-sands 3600
 (cat <<EOF
-four-corners 4800
-tar-sands 3600
+siberia 3600
 EOF
 ) | while read target delta_t ; do
     echo $target $delta_t
