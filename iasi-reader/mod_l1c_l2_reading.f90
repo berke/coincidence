@@ -1035,8 +1035,8 @@ contains
             recs(nrecs)%pos = fpos
          endif
          
-         write(*,100) nrecs, fpos, grh%RECORD_CLASS, grh%RECORD_SUBCLASS, &
-                      grh%RECORD_SUBCLASS_VERSION, grh%RECORD_SIZE
+         !write(*,100) nrecs, fpos, grh%RECORD_CLASS, grh%RECORD_SUBCLASS, &
+         !             grh%RECORD_SUBCLASS_VERSION, grh%RECORD_SIZE
 
          ! Update position in file stream
          fpos = fpos + grh%RECORD_SIZE
@@ -1574,8 +1574,8 @@ contains
             recs(nrecs)%pos = fpos
          endif
          
-         write(*,100) nrecs, fpos, grh%RECORD_CLASS, grh%RECORD_SUBCLASS, &
-                      grh%RECORD_SUBCLASS_VERSION, grh%RECORD_SIZE
+         !write(*,100) nrecs, fpos, grh%RECORD_CLASS, grh%RECORD_SUBCLASS, &
+         !             grh%RECORD_SUBCLASS_VERSION, grh%RECORD_SIZE
 
          ! Update position in file stream
          fpos = fpos + grh%RECORD_SIZE
@@ -2590,8 +2590,8 @@ contains
             recs(nrec)%pos = fpos
          endif
          
-         write(*,100) nrec, fpos, grh%RECORD_CLASS, grh%RECORD_SUBCLASS, &
-            grh%RECORD_SUBCLASS_VERSION, grh%RECORD_SIZE
+         !write(*,100) nrec, fpos, grh%RECORD_CLASS, grh%RECORD_SUBCLASS, &
+         !   grh%RECORD_SUBCLASS_VERSION, grh%RECORD_SIZE
 
          ! Update position in file stream
          fpos = fpos + grh%RECORD_SIZE
@@ -2699,8 +2699,8 @@ contains
             recs(nrec)%pos = fpos
          end if
          
-         write(*,100) nrec, fpos, grh%RECORD_CLASS, grh%RECORD_SUBCLASS, &
-                      grh%RECORD_SUBCLASS_VERSION, grh%RECORD_SIZE
+         !write(*,100) nrec, fpos, grh%RECORD_CLASS, grh%RECORD_SUBCLASS, &
+         !             grh%RECORD_SUBCLASS_VERSION, grh%RECORD_SIZE
 
          ! Update position in file stream
          fpos = fpos + grh%RECORD_SIZE
@@ -2800,8 +2800,8 @@ contains
             recs(nrec)%pos = fpos
          end if
          
-         write(*,100) nrec, fpos, grh%RECORD_CLASS, grh%RECORD_SUBCLASS, &
-                      grh%RECORD_SUBCLASS_VERSION, grh%RECORD_SIZE
+         !write(*,100) nrec, fpos, grh%RECORD_CLASS, grh%RECORD_SUBCLASS, &
+         !             grh%RECORD_SUBCLASS_VERSION, grh%RECORD_SIZE
 
          ! Update position in file stream
          fpos = fpos + grh%RECORD_SIZE
