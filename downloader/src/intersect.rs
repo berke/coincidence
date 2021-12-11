@@ -8,11 +8,13 @@ mod poly_utils;
 use std::error::Error;
 use std::fs::File;
 use std::io::{Write,BufWriter};
-use log::{trace,info};
+use log::{trace,info,error};
 use clap::{Arg,App};
 use chrono::{Utc,TimeZone,NaiveDateTime,DateTime};
 use geo::{MultiPolygon,Polygon,LineString};
-use geo::algorithm::{area::Area,intersects::Intersects};
+use geo::algorithm::{area::Area,
+		     centroid::Centroid,
+		     intersects::Intersects};
 use geo_clipper::Clipper;
 
 use footprint::Footprints;
@@ -231,11 +233,18 @@ fn main()->Result<(),Box<dyn Error>> {
 
 			    trace!("Intersection {:04}: {} vs {} (time difference {}, tau {}), pseudo-area ratio: {}, time: {} to {}",
 				   n_inter,f1.id,f2.id,min_delta_t,tau,area_ratio,ts0,ts1);
-			    writeln!(report_buf,"{:04}\t{}\t{}\t{:5.1}\t{:5.3}\t{:5.3}\t{}\t{}",
-				     n_inter,
-				     ts0,
-				     ts1,
-				     min_delta_t,tau,area_ratio,f1.id,f2.id)?;
+
+			    if let Some(c) = inter_mp.centroid() {
+				writeln!(report_buf,"{:04}\t{}\t{}\t{:5.1}\t{:5.3}\t{:5.3}\t{}\t{}\t{:5.3}\t{:5.3}",
+					 n_inter,
+					 ts0,
+					 ts1,
+					 min_delta_t,tau,area_ratio,f1.id,f2.id,
+					 c.x(),
+					 c.y())?;
+			    } else {
+				error!("Cannot compute centroid for {:04}",n_inter)
+			    }
 
 			    if let Some(fp_fn) = args.value_of("output_base") {
 				let mut f1c = f1.clone();

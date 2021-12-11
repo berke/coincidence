@@ -33,6 +33,12 @@ case $TARGET in
 	LAT0=${LAT0:-53.0}
 	LAT1=${LAT1:-63.0}
 	;;
+    nizhnevartovsk)
+	LON0=${LON0:-75.0}
+	LON1=${LON1:-78.0}
+	LAT0=${LAT0:-60.0}
+	LAT1=${LAT1:-62.0}
+	;;
     anywhere)
 	LON0=${LON0:--180.0}
 	LON1=${LON1:-180.0}
