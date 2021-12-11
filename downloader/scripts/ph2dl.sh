@@ -355,6 +355,12 @@ do_iasi() {
 	    done
 	fi
 
+	if [ ! -z "$IASI_SAVE" ]; then
+	    if [ ! -e $IASI_SAVE/$FILE ]; then
+		cp -l $nat_out $IASI_SAVE/$FILE
+	    fi
+	fi
+
 	local iasinat2nex_log=$work/iasinat2nex.log
 	local nex_out_tmp=$work/$id.nex.tmp
 	if $IASINAT2NEX $nat_out $nex_out_tmp >$iasinat2nex_log 2>&1 ; then
