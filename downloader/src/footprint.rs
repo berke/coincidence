@@ -103,6 +103,7 @@ impl Footprints {
 	for ifp in 0..m {
 	    writeln!(buf,"Footprint {}",ifp)?;
 	    let fp = &self.footprints[ifp];
+	    writeln!(buf,"  ID {}",fp.id)?;
 	    let npoly = fp.outline.len();
 	    writeln!(buf,"  Number of polygons: {}",npoly)?;
 	    for ipoly in 0..npoly {
