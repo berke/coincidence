@@ -5,6 +5,11 @@ use crate::poly_utils;
 
 pub fn segment_crosses_antimeridian((x0,_y0):(f64,f64),(x1,_y1):(f64,f64))->bool {
     let threshold = 180.0;
+    fn f(x:f64)->f64 {
+	(x + 180.0).rem_euclid(360.0) - 180.0
+    }
+    let x0 = f(x0);
+    let x1 = f(x1);
     x0.signum() != x1.signum() && (x1 - x0).abs() >= threshold
 }
 
