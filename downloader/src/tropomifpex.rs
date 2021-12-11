@@ -14,6 +14,7 @@ use clap::{Arg,App};
 use misc_error::MiscError;
 use footprint::{Footprint,Footprints};
 use ndarray::{ArrayD,Array1,Array2,Array4};
+use std::collections::{BTreeMap,BTreeSet};
 
 fn main()->Result<(),Box<dyn Error>> {
     simple_logger::SimpleLogger::new().init()?;
@@ -22,13 +23,37 @@ fn main()->Result<(),Box<dyn Error>> {
     let args = App::new("tropomifpex")
 	.arg(Arg::with_name("out").short("o").long("output").value_name("PATH").takes_value(true).required(true))
 	.arg(Arg::with_name("input").multiple(true))
+	.arg(Arg::with_name("selection").long("selection").value_name("IGRA,ISCAN").multiple(true))
 	.arg(Arg::with_name("scan0").long("scan0").takes_value(true).default_value("0").help("Zero-based index of first scan"))
 	.arg(Arg::with_name("mscan").long("mscan").takes_value(true).default_value("1").help("Scan modulus"))
 	.arg(Arg::with_name("nscan").long("nscan").takes_value(true).help("Number of scans"))
+	.arg(Arg::with_name("by-pixel").short("p").long("by-pixel"))
 	.get_matches();
 
     let out_fn = args.value_of("out").expect("Specify path to output file");
     let geo_fns = args.values_of("input").expect("Specify input files");
+    let by_pixel = args.is_present("by-pixel");
+    let with_selection = args.is_present("selection");
+    let selection =
+	if with_selection {
+	    let mut sel = BTreeMap::new();
+	    for (igra,ipix) in
+		args
+		.values_of("selection")
+		.unwrap()
+		.map(|x| {
+		    let mut xs = x.split(',');
+		    let x0 = xs.next().expect("No granule ID");
+		    let x1 = xs.next().expect("No pixel ID");
+		    (x0.parse::<usize>().expect("Bad granule ID"),
+		     x1.parse::<usize>().expect("Bad pixel ID")) })
+	    {
+		sel.entry(igra).or_insert_with(|| BTreeSet::new()).insert(ipix);
+	    }
+	    Some(sel)
+	} else {
+	    None
+	};
 
     let mut footprints = Vec::new();
 
@@ -85,45 +110,89 @@ fn main()->Result<(),Box<dyn Error>> {
 
 	let mut ncross = 0;
 
-	for igra in 0..ngra {
-	    let mut iscan = scan0;
-	    loop {
-		if iscan >= scan0+nscan {
-		    break;
-		}
-		let mut outline : Vec<Vec<Vec<(f64,f64)>>> = Vec::new();
-		let mut ring = Vec::new();
-		for ipix in 0..npix {
-		    ring.push((lons[[igra,iscan,ipix,0]] as f64,
-			       lats[[igra,iscan,ipix,0]] as f64));
-		}
-		ring.push((lons[[igra,iscan,npix - 1,1]] as f64,
-			   lats[[igra,iscan,npix - 1,1]] as f64));
-		for ipix in (0..npix).rev() {
-		    ring.push((lons[[igra,iscan,ipix,2]] as f64,
-			       lats[[igra,iscan,ipix,2]] as f64));
-		}
-		ring.push((lons[[igra,iscan,0,3]] as f64,
-			   lats[[igra,iscan,0,3]] as f64));
+	let granules : Vec<usize> =
+	    if let Some(ref sel) = selection {
+		sel.keys().map(|&x| x).collect()
+	    } else {
+		(0..ngra).collect()
+	    };
 
-		if amcut::cut_and_push(&mut outline,ring) {
-		    ncross += 1;
-		}
-		
+	for igra in granules {
+	    let scans : Vec<usize> =
+		if let Some(ref sel) = selection {
+		    sel.get(&igra).unwrap().iter().map(|&x| x).collect()
+		} else {
+		    let mut scans = Vec::new();
+		    let mut iscan = scan0;
+		    loop {
+			if iscan >= scan0+nscan {
+			    break;
+			}
+			scans.push(iscan);
+			iscan += mscan;
+		    };
+		    scans
+		};
+	    for iscan in scans {
 		let t_obs = tropomi_t0 + Duration::seconds(times[[igra]] as i64) + Duration::milliseconds(delta_times[[igra,iscan]] as i64);
 		let t0 = t_obs.timestamp_millis() as f64 / 1000.0;
 		let t1 = t0 + t_exp;
-		let id = format!("{}/{}/{}",dataset_id,igra,iscan);
-		let fp = Footprint{
-		    orbit,
-		    id:id.to_string(),
-		    platform:platform.to_string(),
-		    instrument:instrument.to_string(),
-		    time_interval:(t0,t1),
-		    outline
-		};
-		footprints.push(fp);
-		iscan += mscan;
+
+		if by_pixel {
+		    for ipix in 0..npix {
+			let mut outline : Vec<Vec<Vec<(f64,f64)>>> = Vec::new();
+			let mut ring = Vec::new();
+			for i in (0..4).rev() {
+			    ring.push((lons[[igra,iscan,ipix,i]] as f64,
+				       lats[[igra,iscan,ipix,i]] as f64));
+			}
+
+			if amcut::cut_and_push(&mut outline,ring) {
+			    ncross += 1;
+			}
+		    
+			let id = format!("{}/{}/{}/{}",dataset_id,igra,iscan,ipix);
+			let fp = Footprint{
+			    orbit,
+			    id:id.to_string(),
+			    platform:platform.to_string(),
+			    instrument:instrument.to_string(),
+			    time_interval:(t0,t1),
+			    outline
+			};
+			footprints.push(fp);
+		    }
+		} else {
+		    let mut outline : Vec<Vec<Vec<(f64,f64)>>> = Vec::new();
+		    let mut ring = Vec::new();
+		    for ipix in 0..npix {
+			ring.push((lons[[igra,iscan,ipix,0]] as f64,
+				   lats[[igra,iscan,ipix,0]] as f64));
+		    }
+		    ring.push((lons[[igra,iscan,npix - 1,1]] as f64,
+			       lats[[igra,iscan,npix - 1,1]] as f64));
+		    for ipix in (0..npix).rev() {
+			ring.push((lons[[igra,iscan,ipix,2]] as f64,
+				   lats[[igra,iscan,ipix,2]] as f64));
+		    }
+		    ring.push((lons[[igra,iscan,0,3]] as f64,
+			       lats[[igra,iscan,0,3]] as f64));
+
+		    if amcut::cut_and_push(&mut outline,ring) {
+			ncross += 1;
+		    }
+		    
+		    let id = format!("{}/{}/{}",dataset_id,igra,iscan);
+		    let fp = Footprint{
+			orbit,
+			id:id.to_string(),
+			platform:platform.to_string(),
+			instrument:instrument.to_string(),
+			time_interval:(t0,t1),
+			outline
+		    };
+		    footprints.push(fp);
+		}
 	    }
 	}
 	info!("Number of scan lines that have been split due to crossing the meridian boundary: {}",ncross);
