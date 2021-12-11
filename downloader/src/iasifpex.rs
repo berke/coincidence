@@ -112,11 +112,15 @@ fn main()->Result<(),Box<dyn Error>> {
 
     let args = App::new("iasifpex")
 	.arg(Arg::with_name("out").short("o").long("output").value_name("PATH").takes_value(true).required(true))
+	.arg(Arg::with_name("by-pixel").short("p").long("by-pixel"))
+	.arg(Arg::with_name("t-exp").long("t-exp").value_name("SECONDS").default_value("0.01"))
 	.arg(Arg::with_name("input").multiple(true))
 	.get_matches();
 
     let out_fn = args.value_of("out").expect("Specify path to output file");
     let nex_fns = args.values_of("input").expect("Specify input files (produced by extract_footprints)");
+    let by_pixel = args.is_present("by-pixel");
+    let t_exp : f64 = args.value_of("t-exp").unwrap().parse().expect("Invalid exposure time");
 
     let mut footprints = Vec::new();
 
@@ -165,37 +169,64 @@ fn main()->Result<(),Box<dyn Error>> {
 		    let igra = scan[0].igra;
 		    let npix = scan.len();
 
-		    let id = format!("{}/{}",dataset_id,igra);
-		    let mut ring = Vec::new();
+		    if by_pixel {
+			for iscan in (0..npix).rev() {
+			    let id = format!("{}/{}/{}",dataset_id,igra,iscan);
+			    let mut ring = Vec::new();
+			    ring.push(scan[iscan].outline[3]);
+			    ring.push(scan[iscan].outline[2]);
+			    ring.push(scan[iscan].outline[1]);
+			    ring.push(scan[iscan].outline[0]);
+			
+			    let mut outline = Vec::new();
+			    if amcut::cut_and_push(&mut outline,ring) {
+				ncross += 1;
+			    }
 
-		    ring.push(scan[0].outline[3]);
-		    for i in 0..npix {
-			ring.push(scan[i].outline[2]);
+			    let fp = Footprint{
+				orbit,
+				id:id.to_string(),
+				platform:platform.to_string(),
+				instrument:instrument.to_string(),
+				time_interval:(scan[iscan].t,scan[iscan].t + t_exp),
+				outline
+			    };
+			    footprints.push(fp);
+			}
+		    } else {
+			let id = format!("{}/{}",dataset_id,igra);
+			let mut ring = Vec::new();
+
+			ring.push(scan[0].outline[3]);
+			for i in 0..npix {
+			    ring.push(scan[i].outline[2]);
+			}
+
+			ring.push(scan[npix - 1].outline[1]);
+
+			for i in (1..npix).rev() {
+			    ring.push(scan[i].outline[0]);
+			}
+			
+			let mut outline = Vec::new();
+			if amcut::cut_and_push(&mut outline,ring) {
+			    ncross += 1;
+			}
+
+			let t0 = scan.iter().fold(scan[0].t,|q,x| q.min(x.t));
+			let t1 = scan.iter().fold(scan[0].t,|q,x| q.max(x.t));
+
+			let fp = Footprint{
+			    orbit,
+			    id:id.to_string(),
+			    platform:platform.to_string(),
+			    instrument:instrument.to_string(),
+			    time_interval:(t0,t1),
+			    outline
+			};
+
+			footprints.push(fp);
 		    }
-
-		    ring.push(scan[npix - 1].outline[1]);
-
-		    for i in (1..npix).rev() {
-			ring.push(scan[i].outline[0]);
-		    }
-		    
-		    let mut outline = Vec::new();
-		    if amcut::cut_and_push(&mut outline,ring) {
-			ncross += 1;
-		    }
-
-		    let t0 = scan.iter().fold(scan[0].t,|q,x| q.min(x.t));
-		    let t1 = scan.iter().fold(scan[0].t,|q,x| q.max(x.t));
-
-		    let fp = Footprint{
-			orbit,
-			id:id.to_string(),
-			platform:platform.to_string(),
-			instrument:instrument.to_string(),
-			time_interval:(t0,t1),
-			outline
-		    };
-		    footprints.push(fp);
 
 		    scan.clear();
 		}
