@@ -70,9 +70,15 @@ fn main()->Result<(),Box<dyn Error>> {
 	.arg(Arg::with_name("t_min").long("t-min").help("Start of time range").takes_value(true))
 	.arg(Arg::with_name("t_max").long("t-max").help("End of time range").takes_value(true))
 	.arg(Arg::with_name("verbose").short("v"))
+	.arg(Arg::with_name("save_no_inter").long("save-no-inter").help("Save diagnostic MPK files for pairs that do not have an intersection"))
+	.arg(Arg::with_name("rho_by_fp").long("rho-by-fp").help("Normalize rho by the footprint area, not the ROI area"))
+	.arg(Arg::with_name("omega").long("omega").default_value("0.0")
+	     .help("Maximum ROI clipping preservation ratio"))
 	.get_matches();
 
     let verbose = args.is_present("verbose");
+    let save_no_inter = args.is_present("save_no_inter");
+    let rho_by_fp = args.is_present("rho_by_fp");
 
     simple_logger::SimpleLogger::new()
 	.with_level(if verbose { log::LevelFilter::Trace } else { log::LevelFilter::Info })
@@ -103,6 +109,7 @@ fn main()->Result<(),Box<dyn Error>> {
 	} else {
 	    std::f64::INFINITY
 	};
+    let omega : f64 = args.value_of("omega").unwrap().parse().expect("Invalid omega value");
 
     info!("ROI: latitudes {} to {}, longitudes {} to {}",lat0,lat1,lon0,lon1);
     let roi =
@@ -144,8 +151,13 @@ fn main()->Result<(),Box<dyn Error>> {
 	if !(t_min <= f1.time_interval.0 && f1.time_interval.1 < t_max) {
 	    continue;
 	}
-	if let Some(f1_mp) = clip_to_roi(&roi,&outline_to_multipolygon(&f1.outline)) {
-	    fps_in_roi1.push((i1,f1_mp));
+	let f1_mp0 = outline_to_multipolygon(&f1.outline);
+	let f1_area = f1_mp0.unsigned_area();
+	if let Some(f1_mp) = clip_to_roi(&roi,&f1_mp0) {
+	    let f1_mp_area = f1_mp.unsigned_area();
+	    if f1_mp_area >= omega*f1_area {
+		fps_in_roi1.push((i1,f1_mp,f1_area));
+	    }
 	} else {
 	    trace!("Rejected {} as it does not meet the ROI",f1.id);
 	}
@@ -157,8 +169,13 @@ fn main()->Result<(),Box<dyn Error>> {
 	    continue;
 	}
 
-	if let Some(f2_mp) = clip_to_roi(&roi,&outline_to_multipolygon(&f2.outline)) {
-	    fps_in_roi2.push((i2,f2_mp));
+	let f2_mp0 = outline_to_multipolygon(&f2.outline);
+	let f2_area = f2_mp0.unsigned_area();
+	if let Some(f2_mp) = clip_to_roi(&roi,&f2_mp0) {
+	    let f2_mp_area = f2_mp.unsigned_area();
+	    if f2_mp_area >= omega*f2_area {
+		fps_in_roi2.push((i2,f2_mp,f2_area));
+	    }
 	} else {
 	    trace!("Rejected {} as it does not meet the ROI",f2.id);
 	}
@@ -171,9 +188,9 @@ fn main()->Result<(),Box<dyn Error>> {
 	  fps_in_roi2.len(),
 	  100.0*fps_in_roi2.len() as f64/n2 as f64);
 
-    for &(i1,ref f1_mp) in fps_in_roi1.iter() {
+    for &(i1,ref f1_mp,f1_area) in fps_in_roi1.iter() {
 	let f1 = &fps1.footprints[i1];
-	for &(i2,ref f2_mp) in fps_in_roi2.iter() {
+	for &(i2,ref f2_mp,f2_area) in fps_in_roi2.iter() {
 	    let f2 = &fps2.footprints[i2];
 
 	    let min_delta_t =
@@ -198,9 +215,14 @@ fn main()->Result<(),Box<dyn Error>> {
 		    };
 		n_time_match += 1;
 		if tau >= tau_min {
-		    if let Some((area,_mp)) = check_intersection(f1_mp,f2_mp) {
-			let area_ratio = area / roi_area;
-			if area_ratio > min_overlap {
+		    if let Some((area,inter_mp)) = check_intersection(f1_mp,f2_mp) {
+			let area_ratio =
+			    if rho_by_fp {
+				area / f1_area.min(f2_area)
+			    } else {
+				area / roi_area
+			    };
+			if area_ratio >= min_overlap {
 			    let t0 = f1.time_interval.0.min(f2.time_interval.0);
 			    let t1 = f1.time_interval.1.max(f2.time_interval.1);
 			    let ts0 = Utc.timestamp(t0.floor() as i64,(t0.fract() * 1e9 + 0.5).floor() as u32);
@@ -220,13 +242,16 @@ fn main()->Result<(),Box<dyn Error>> {
 				let mut f2c = f2.clone();
 				let mut f1ci = f1.clone();
 				let mut f2ci = f2.clone();
+				let mut inter = f2.clone();
 				f1c.id = format!("FP1/{}/{}",n_inter,f1.id);
 				f2c.id = format!("FP2/{}/{}",n_inter,f2.id);
 				f1ci.id = format!("ROI1/{}/{}",n_inter,f1.id);
 				f2ci.id = format!("ROI2/{}/{}",n_inter,f2.id);
+				inter.id = format!("INT/{}/{}&{}",n_inter,f1.id,f2.id);
 				f1ci.outline = poly_utils::multipolygon_to_vec(f1_mp);
 				f2ci.outline = poly_utils::multipolygon_to_vec(f2_mp);
-				let fps = Footprints{ footprints:vec![f1c,f2c,f1ci,f2ci] };
+				inter.outline = poly_utils::multipolygon_to_vec(&inter_mp);
+				let fps = Footprints{ footprints:vec![f1c,f2c,f1ci,f2ci,inter] };
 				fps.save_to_file(&format!("{}-{:05}.mpk",fp_fn,n_inter))?;
 			    }
 			    
@@ -237,15 +262,17 @@ fn main()->Result<(),Box<dyn Error>> {
 		    } else {
 			trace!("No intersection: {} vs {} (time difference {})",f1.id,f2.id,min_delta_t);
 
-			if let Some(fp_fn) = args.value_of("output_base") {
-			    let mut f1c = f1.clone();
-			    let mut f2c = f2.clone();
-			    f1c.id = format!("FP1/{}",f1.id);
-			    f2c.id = format!("FP2/{}",f2.id);
-			    f1c.outline = poly_utils::multipolygon_to_vec(f1_mp);
-			    f2c.outline = poly_utils::multipolygon_to_vec(f2_mp);
-			    let fps = Footprints{ footprints:vec![f1c,f2c] };
-			    fps.save_to_file(&format!("{}-no_inter-{:05}-{:05}.mpk",fp_fn,i1,i2))?;
+			if save_no_inter {
+			    if let Some(fp_fn) = args.value_of("output_base") {
+				let mut f1c = f1.clone();
+				let mut f2c = f2.clone();
+				f1c.id = format!("FP1/{}",f1.id);
+				f2c.id = format!("FP2/{}",f2.id);
+				f1c.outline = poly_utils::multipolygon_to_vec(f1_mp);
+				f2c.outline = poly_utils::multipolygon_to_vec(f2_mp);
+				let fps = Footprints{ footprints:vec![f1c,f2c] };
+				fps.save_to_file(&format!("{}-no_inter-{:05}-{:05}.mpk",fp_fn,i1,i2))?;
+			    }
 			}
 		    }
 		} else {

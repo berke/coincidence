@@ -58,4 +58,5 @@ $INTERSECT \
     --t-min $T_MIN \
     --t-max $T_MAX \
     --min-overlap $RHO \
-    --output-base $OUT
+    --output-base $OUT \
+    $*
