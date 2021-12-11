@@ -9,6 +9,7 @@ use std::error::Error;
 use std::path::{Path,PathBuf};
 use std::fs::File;
 use std::io::{BufReader,BufRead};
+use std::f64::consts::PI;
 
 use log::{error,info};
 use chrono::{DateTime,NaiveDate,Utc};
@@ -167,44 +168,83 @@ fn main()->Result<(),Box<dyn Error>> {
 	    if let Some(fl) = flush {
 		if scan.len() > 0 {
 		    let igra = scan[0].igra;
-		    let npix = scan.len();
+		    let nscan = scan.len();
 
 		    if by_pixel {
-			for iscan in (0..npix).rev() {
-			    let id = format!("{}/{}/{}",dataset_id,igra,iscan);
-			    let mut ring = Vec::new();
-			    ring.push(scan[iscan].outline[3]);
-			    ring.push(scan[iscan].outline[2]);
-			    ring.push(scan[iscan].outline[1]);
-			    ring.push(scan[iscan].outline[0]);
-			
-			    let mut outline = Vec::new();
-			    if amcut::cut_and_push(&mut outline,ring) {
-				ncross += 1;
+			for iscan in 0..nscan {
+			    fn sca(k:f64,(x,y):(f64,f64))->(f64,f64) {
+				(k*x,k*y)
 			    }
+			    fn add((x1,y1):(f64,f64),(x2,y2):(f64,f64))->(f64,f64) {
+				(x1+x2,y1+y2)
+			    }
+			    fn sub((x1,y1):(f64,f64),(x2,y2):(f64,f64))->(f64,f64) {
+				(x1-x2,y1-y2)
+			    }
+			    fn mix(p1:(f64,f64),a:f64,p2:(f64,f64))->(f64,f64) {
+				add(p1,sca(1.0-a,sub(p2,p1)))
+			    }
+			    let sc = &scan[iscan];
 
-			    let fp = Footprint{
-				orbit,
-				id:id.to_string(),
-				platform:platform.to_string(),
-				instrument:instrument.to_string(),
-				time_interval:(scan[iscan].t,scan[iscan].t + t_exp),
-				outline
+			    let a = sc.outline[0]; // XXX check order
+			    let b = sc.outline[1];
+			    let c = sc.outline[2];
+			    let d = sc.outline[3];
+
+			    if amcut::crosses_antimeridian(&vec![d,c,b,a]) {
+				ncross += 1;
+				continue;
+			    }
+			    
+			    let inter = |u:f64,v:f64|->(f64,f64) {
+				let e = mix(a,u,d);
+				let f = mix(b,u,c);
+				mix(e,v,f)
 			    };
-			    footprints.push(fp);
+			    let ntheta = 8;
+			    let cents = [(0.0,0.0), // a
+					 (0.0,1.0), // b
+					 (1.0,0.0), // c
+					 (1.0,1.0)]; // d
+			    for ipix in (0..4).rev() {
+				let id = format!("{}/{}/{}/{}",dataset_id,igra,iscan,ipix);
+				let mut ring = Vec::new();
+				for itheta in 0..ntheta {
+				    let r = 0.5;
+				    let theta = 2.0*itheta as f64*PI/(ntheta - 1) as f64;
+				    let u = cents[ipix].0 + r*theta.cos();
+				    let v = cents[ipix].1 + r*theta.sin();
+				    ring.push(inter(u,v));
+				}
+				
+				let mut outline = Vec::new();
+				if amcut::cut_and_push(&mut outline,ring) {
+				    ncross += 1;
+				}
+
+				let fp = Footprint{
+				    orbit,
+				    id:id.to_string(),
+				    platform:platform.to_string(),
+				    instrument:instrument.to_string(),
+				    time_interval:(scan[iscan].t,scan[iscan].t + t_exp),
+				    outline
+				};
+				footprints.push(fp);
+			    }
 			}
 		    } else {
 			let id = format!("{}/{}",dataset_id,igra);
 			let mut ring = Vec::new();
 
 			ring.push(scan[0].outline[3]);
-			for i in 0..npix {
+			for i in 0..nscan {
 			    ring.push(scan[i].outline[2]);
 			}
 
-			ring.push(scan[npix - 1].outline[1]);
+			ring.push(scan[nscan - 1].outline[1]);
 
-			for i in (1..npix).rev() {
+			for i in (1..nscan).rev() {
 			    ring.push(scan[i].outline[0]);
 			}
 			
