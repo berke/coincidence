@@ -2547,7 +2547,7 @@ contains
    subroutine read_iasi_l1c_file_recs(fname, nrec, recs, giadr_sf, giadr_quality)
       implicit none
       ! Arguments
-      character(len=500), intent(in)                  :: fname
+      character(len=*), intent(in)                  :: fname
       integer(kind=4)   , intent(out)                 :: nrec
       type(RECORD_ID)   , intent(out)                 :: recs(MAX_RECORDS)
       type(RECORD_GIADR_SCALE_FACTORS), intent(out)   :: giadr_sf
@@ -2626,40 +2626,40 @@ contains
       return
    end subroutine read_iasi_mdr_l1c
 
-   subroutine read_iasi_l2_file( fname, granule )
-      implicit none
-      ! Variables
-      character(len=500)    , intent(in)                 :: fname
-      type(L2_GRANULE)      , intent(out)                :: granule
-      ! Internal variables
-      integer(kind=4)                                    :: uin 
-      type(RECORD_ID)                                    :: recs(MAX_RECORDS)
-      integer(kind=4)                                    :: k
-      integer(kind=4)                                    :: j
+   ! subroutine read_iasi_l2_file( fname, granule )
+   !    implicit none
+   !    ! Variables
+   !    character(len=500)    , intent(in)                 :: fname
+   !    type(L2_GRANULE)      , intent(out)                :: granule
+   !    ! Internal variables
+   !    integer(kind=4)                                    :: uin 
+   !    type(RECORD_ID)                                    :: recs(MAX_RECORDS)
+   !    integer(kind=4)                                    :: k
+   !    integer(kind=4)                                    :: j
       
-      ! Get list of records and giadr
-      call read_iasi_l2_file_recs( fname, granule%nb_lines,&
-                                   recs, granule%giadr_l2 )
+   !    ! Get list of records and giadr
+   !    call read_iasi_l2_file_recs( fname, granule%nb_lines,&
+   !                                 recs, granule%giadr_l2 )
       
-      ! Open file
-      uin = getFileUnit()
-      open(unit=uin, file=fname, access='stream', status='old',&
-            action='read', convert='big_endian')
+   !    ! Open file
+   !    uin = getFileUnit()
+   !    open(unit=uin, file=fname, access='stream', status='old',&
+   !          action='read', convert='big_endian')
       
-      ! Read lines
-      allocate(granule%mdr_l2(granule%nb_lines))
-      do k = 1, granule%nb_lines
-         call read_iasi_l2_mdr(uin, recs(k)%pos, granule%mdr_l2(k))
-         granule%mdr_l2(k)%line = k
-         do j = 1, SNOT
-            granule%mdr_l2(k)%vdate(:,j) = &
-                     time_sct2date(granule%mdr_l2(k)%cds_date(j))
-         end do
-      end do
+   !    ! Read lines
+   !    allocate(granule%mdr_l2(granule%nb_lines))
+   !    do k = 1, granule%nb_lines
+   !       call read_iasi_l2_mdr(uin, recs(k)%pos, granule%mdr_l2(k))
+   !       granule%mdr_l2(k)%line = k
+   !       do j = 1, SNOT
+   !          granule%mdr_l2(k)%vdate(:,j) = &
+   !                   time_sct2date(granule%mdr_l2(k)%cds_date(j))
+   !       end do
+   !    end do
       
-      ! Close file
-      close(uin)
-   end subroutine read_iasi_l2_file
+   !    ! Close file
+   !    close(uin)
+   ! end subroutine read_iasi_l2_file
 
    subroutine read_iasi_l2_file_recs(fname, nrec, recs, giadr_l2)
       implicit none

@@ -78,7 +78,7 @@ contains
 
     open(newunit=unit,file=in_fn,access='stream',status='old',action='read',convert='big_endian')
     do isel=1,nsel
-       igra = sel(jgra,isel) + 1
+       igra = sel(jgra,isel)
        iscan = sel(jscan,isel) + 1
        ipix = sel(jpix,isel) + 1
 
