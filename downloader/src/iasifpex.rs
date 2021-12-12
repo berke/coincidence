@@ -11,11 +11,13 @@ use std::fs::File;
 use std::io::{BufReader,BufRead};
 use std::f64::consts::PI;
 
-use log::{error,info};
+use log::{error,warn,info};
 use chrono::{DateTime,NaiveDate,Utc};
 use clap::{Arg,App};
 use misc_error::MiscError;
 use footprint::{Footprint,Footprints};
+use geo::prelude::Contains;
+use geo::Point;
 
 struct IASINexIterator {
     buf:BufReader<File>,
@@ -87,7 +89,8 @@ impl Iterator for IASINexIterator {
 				.collect::<Result<Vec<f64>,_>>() {
 				    Ok(fs) => {
 					let t_pixel = DateTime::<Utc>::from_utc(
-					    NaiveDate::from_ymd(us[2],us[3] as u32,us[4] as u32).and_hms(us[6] as u32,us[7] as u32,us[8] as u32),Utc);
+					    NaiveDate::from_ymd(us[2],us[3] as u32,us[4] as u32)
+						.and_hms(us[6] as u32,us[7] as u32,us[8] as u32),Utc);
 					let t = t_pixel.timestamp_millis() as f64 / 1000.0;
 					let igra = us[0] as u32;
 					let iscan = us[1] as u32;
@@ -136,8 +139,10 @@ fn main()->Result<(),Box<dyn Error>> {
 	let orbit = 0;
 
 	let nex_path = PathBuf::from(nex_fn);
-	let nex_stem = MiscError::from_option(nex_path.file_stem(),"Cannot extract dataset name")?.to_string_lossy();
-	let caps = MiscError::from_option(re.captures(&nex_stem),"Cannot extract platform name")?;
+	let nex_stem = MiscError::from_option(nex_path.file_stem(),
+					      "Cannot extract dataset name")?.to_string_lossy();
+	let caps = MiscError::from_option(re.captures(&nex_stem),
+					  "Cannot extract platform name")?;
 	let platform = caps.get(1).unwrap().as_str();
 	let instrument = "IASI";
 
@@ -191,6 +196,8 @@ fn main()->Result<(),Box<dyn Error>> {
 			    let c = sc.outline[2];
 			    let d = sc.outline[3];
 
+			    let centroid = sca(0.25,add(add(a,b),add(c,d)));
+
 			    if amcut::crosses_antimeridian(&vec![d,c,b,a]) {
 				ncross += 1;
 				continue;
@@ -202,24 +209,29 @@ fn main()->Result<(),Box<dyn Error>> {
 				mix(e,v,f)
 			    };
 			    let ntheta = 8;
-			    let cents = [(0.0,0.0), // a
-					 (0.0,1.0), // b
-					 (1.0,0.0), // c
-					 (1.0,1.0)]; // d
 			    for ipix in (0..4).rev() {
+				let (x,y) = sc.outline[ipix];
 				let id = format!("{}/{}/{}/{}",dataset_id,igra,iscan,ipix);
 				let mut ring = Vec::new();
 				for itheta in 0..ntheta {
 				    let r = 0.5;
 				    let theta = 2.0*itheta as f64*PI/(ntheta - 1) as f64;
-				    let u = cents[ipix].0 + r*theta.cos();
-				    let v = cents[ipix].1 + r*theta.sin();
-				    ring.push(inter(u,v));
+				    let u = 0.5 + r*theta.cos();
+				    let v = 0.5 + r*theta.sin();
+				    let delta = sub(inter(u,v),centroid);
+				    ring.push(add((x,y),delta));
 				}
-				
+
 				let mut outline = Vec::new();
 				if amcut::cut_and_push(&mut outline,ring) {
 				    ncross += 1;
+				}
+
+				let mp = poly_utils::outline_to_multipolygon(&outline);
+				let (x,y) = sc.outline[ipix];
+				if !mp.contains(&Point::new(x,y)) {
+				    warn!("Granule {} scan {} pixel {} coordinates x={} y={} not contained in\n{:#?}",
+				    igra,iscan,ipix,x,y,mp);
 				}
 
 				let fp = Footprint{
