@@ -28,8 +28,8 @@ contains
     integer :: m
     character(len=32) :: buf
     integer(kind=4) :: nrec
-    type(RECORD_ID), allocatable :: recs(:)
     type(RECORD_GIADR_SCALE_FACTORS) :: giadr_sf
+    type(RECORD_ID), allocatable :: recs(:)
     type(RECORD_GIADR_QUALITY), allocatable :: giadr_quality
     type(RECORD_MDR_L1C), allocatable :: mdr
     integer :: unit,ounit,st
@@ -78,9 +78,9 @@ contains
 
     open(newunit=unit,file=in_fn,access='stream',status='old',action='read',convert='big_endian')
     do isel=1,nsel
-       igra = sel(jgra,isel)
-       iscan = sel(jscan,isel)
-       ipix = sel(jpix,isel)
+       igra = sel(jgra,isel) + 1
+       iscan = sel(jscan,isel) + 1
+       ipix = sel(jpix,isel) + 1
 
        write (*,*) 'Processing granule ',igra,' scan ',iscan,' pixel ',ipix
        call read_iasi_mdr_l1c(unit,recs(igra)%pos,giadr_sf,mdr)
