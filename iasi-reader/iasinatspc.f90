@@ -79,33 +79,33 @@ contains
     open(newunit=unit,file=in_fn,access='stream',status='old',action='read',convert='big_endian')
     do isel=1,nsel
        igra = sel(jgra,isel)
-       iscan = sel(jscan,isel) + 1
+       iscan = sel(jscan,isel)
        ipix = sel(jpix,isel) + 1
 
-       write (*,*) 'Processing granule ',igra,' scan ',iscan,' pixel ',ipix
+       write (*,*) 'Processing granule ',igra,' scan ',iscan,' pixel ',ipix - 1
        call read_iasi_mdr_l1c(unit,recs(igra)%pos,giadr_sf,mdr)
 
        write (*,*) 'Quality :',mdr%flg(:,ipix,iscan)
 
        mdr%vdate(:,iscan) = time_sct2date(mdr%cds_date(iscan))
-       write (ounit,'("[",I0,".",I0,".",I0,"]")') igra,iscan,ipix
+       write (ounit,'("[",I0,".",I0,".",I0,"]")') igra,iscan,ipix - 1
        write (ounit,'("timestamp = ",I4.4,"-",I2.2,"-",I2.2,"T",I2.2,":",I2.2,":",I2.2,"Z")') &
             mdr%vdate(1:3,iscan), &
             mdr%vdate(5:7,iscan)
        write (ounit,'("lon = ",F12.6)') mdr%lon(ipix,iscan)
        write (ounit,'("lat = ",F12.6)') mdr%lat(ipix,iscan)
-       write (ounit,'("flg = [",I3,",",I3,",",I3,"]")') mdr%flg(:,ipix,iscan)
+       write (ounit,'("flg = [",I0,",",I0,",",I0,"]")') mdr%flg(:,ipix,iscan)
        write (ounit,'("sza = ",F8.3)') mdr%sza(ipix,iscan)
        write (ounit,'("saz = ",F8.3)') mdr%saa(ipix,iscan)
        write (ounit,'("oza = ",F8.3)') mdr%iza(ipix,iscan)
        write (ounit,'("oaz = ",F8.3)') mdr%iaa(ipix,iscan)
-       write (ounit,'("clc = ",I3)') mdr%clc(ipix,iscan)
-       write (ounit,'("lfr = ",I3)') mdr%lfr(ipix,iscan)
-       write (ounit,'("sif = ",I3)') mdr%sif(ipix,iscan)
+       write (ounit,'("clc = ",I0)') mdr%clc(ipix,iscan)
+       write (ounit,'("lfr = ",I0)') mdr%lfr(ipix,iscan)
+       write (ounit,'("sif = ",I0)') mdr%sif(ipix,iscan)
        write (ounit,'("nu1 = ",F8.3)') nu1
        write (ounit,'("dnu = ",F8.3)') dnu
-       write (ounit,'("ichan1 = ",I4)') ichan1
-       write (ounit,'("nchan = ",I4)') ichan2 - ichan1 + 1
+       write (ounit,'("ichan1 = ",I0)') ichan1
+       write (ounit,'("nchan = ",I0)') ichan2 - ichan1 + 1
        write (ounit,'("radiance = [")')
        do ichan=ichan1,ichan2
           write(ounit,*) mdr%rad(ichan,ipix,iscan)*1e2,"," ! W/cm^-1/m^2/sr?
