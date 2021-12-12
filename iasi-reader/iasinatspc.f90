@@ -74,7 +74,7 @@ contains
     end if
 
     ichan1 = channel_of_nu(nu1,.false.)
-    ichan2 = channel_of_nu(nu2,.true.)
+    ichan2 = channel_of_nu(nu2,.true.) - 1
 
     open(newunit=unit,file=in_fn,access='stream',status='old',action='read',convert='big_endian')
     do isel=1,nsel
