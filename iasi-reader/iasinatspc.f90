@@ -1,7 +1,27 @@
 module extract_spectra_mod
   use mod_l1c_l2_reading
   implicit none
+
+  integer, parameter :: jgra = 1, jscan = 2, jpix = 3
+  integer, parameter :: ichan_ref = 2119
+  real(8), parameter :: nuchan_ref = 1174.5, dnu = 0.25
+  real(8), parameter :: nu1 = 1180.0, nu2 = 1360.0 ! 1345.0
 contains
+  function channel_of_nu(nu,hi)
+    real(8), intent(in) :: nu
+    logical, intent(in) :: hi
+    integer :: channel_of_nu
+    real(8) :: rnu
+
+    rnu = ichan_ref + (nu - nuchan_ref) / dnu
+
+    if (hi) then
+       channel_of_nu = ceiling(rnu)
+    else
+       channel_of_nu = floor(rnu)
+    end if
+  end function channel_of_nu
+
   subroutine main
     implicit none
     character(len=:), allocatable :: in_fn,out_fn
@@ -16,10 +36,7 @@ contains
     integer :: nsel
     integer, allocatable :: sel(:,:)
     integer :: narg
-    integer :: isel,igra,iscan,ipix,ichan
-    integer, parameter :: jgra = 1, jscan = 2, jpix = 3
-    integer, parameter :: ichan1 = 2119, ichan2 = 2944
-    real(8), parameter :: nuchan1 = 1174.5, dnu = 0.25
+    integer :: isel,igra,iscan,ipix,ichan,ichan1,ichan2
 
     allocate(mdr,giadr_quality,recs(MAX_RECORDS))
     
@@ -56,6 +73,9 @@ contains
        stop
     end if
 
+    ichan1 = channel_of_nu(nu1,.false.)
+    ichan2 = channel_of_nu(nu2,.true.)
+
     open(newunit=unit,file=in_fn,access='stream',status='old',action='read',convert='big_endian')
     do isel=1,nsel
        igra = sel(jgra,isel)
@@ -82,10 +102,10 @@ contains
        write (ounit,'("clc = ",I3)') mdr%clc(ipix,iscan)
        write (ounit,'("lfr = ",I3)') mdr%lfr(ipix,iscan)
        write (ounit,'("sif = ",I3)') mdr%sif(ipix,iscan)
-       write (ounit,'("nu1 = ",F8.3)') nuchan1
+       write (ounit,'("nu1 = ",F8.3)') nu1
        write (ounit,'("dnu = ",F8.3)') dnu
        write (ounit,'("ichan1 = ",I4)') ichan1
-       write (ounit,'("nchan1 = ",I4)') ichan2 - ichan1 + 1
+       write (ounit,'("nchan = ",I4)') ichan2 - ichan1 + 1
        write (ounit,'("radiance = [")')
        do ichan=ichan1,ichan2
           write(ounit,*) mdr%rad(ichan,ipix,iscan)*1e2,"," ! W/cm^-1/m^2/sr?
