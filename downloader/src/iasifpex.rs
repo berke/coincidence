@@ -211,7 +211,7 @@ fn main()->Result<(),Box<dyn Error>> {
 			    let ntheta = 8;
 			    for ipix in (0..4).rev() {
 				let (x,y) = sc.outline[ipix];
-				let id = format!("{}/{}/{}/{}",dataset_id,igra,iscan,ipix);
+				let id = format!("{}/{}/{}/{}",dataset_id,igra,iscan + 1,ipix + 1);
 				let mut ring = Vec::new();
 				for itheta in 0..ntheta {
 				    let r = 0.5;
@@ -231,7 +231,7 @@ fn main()->Result<(),Box<dyn Error>> {
 				let (x,y) = sc.outline[ipix];
 				if !mp.contains(&Point::new(x,y)) {
 				    warn!("Granule {} scan {} pixel {} coordinates x={} y={} not contained in\n{:#?}",
-				    igra,iscan,ipix,x,y,mp);
+				    igra,iscan + 1,ipix + 1,x,y,mp);
 				}
 
 				let fp = Footprint{

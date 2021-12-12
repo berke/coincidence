@@ -80,15 +80,15 @@ contains
     do isel=1,nsel
        igra = sel(jgra,isel)
        iscan = sel(jscan,isel)
-       ipix = sel(jpix,isel) + 1
+       ipix = sel(jpix,isel)
 
-       write (*,*) 'Processing granule ',igra,' scan ',iscan,' pixel ',ipix - 1
+       write (*,*) 'Processing granule ',igra,' scan ',iscan,' pixel ',ipix
        call read_iasi_mdr_l1c(unit,recs(igra)%pos,giadr_sf,mdr)
 
        write (*,*) 'Quality :',mdr%flg(:,ipix,iscan)
 
        mdr%vdate(:,iscan) = time_sct2date(mdr%cds_date(iscan))
-       write (ounit,'("[",I0,".",I0,".",I0,"]")') igra,iscan,ipix - 1
+       write (ounit,'("[",I0,".",I0,".",I0,"]")') igra,iscan,ipix
        write (ounit,'("timestamp = ",I4.4,"-",I2.2,"-",I2.2,"T",I2.2,":",I2.2,":",I2.2,"Z")') &
             mdr%vdate(1:3,iscan), &
             mdr%vdate(5:7,iscan)
