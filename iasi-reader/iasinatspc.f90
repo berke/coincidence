@@ -57,19 +57,20 @@ contains
     call get_command_argument(3,buf)
     read(buf,*) nu1
 
-    call get_command_argument(3,length=m)
+    call get_command_argument(4,length=m)
     if (m == 0) stop 'Specify nu2'
-    call get_command_argument(3,buf)
+    call get_command_argument(4,buf)
     read(buf,*) nu2
+
     write(*,*) 'Spectral range: ',nu1,' to ',nu2
 
     narg = command_argument_count()
-    nsel = narg - 2
+    nsel = narg - 4
 
     write(*,*) 'Number of selected pixels: ',nsel
     allocate(sel(3,nsel))
     do isel=1,nsel
-       call get_command_argument(2+isel,buf)
+       call get_command_argument(4+isel,buf)
        read(buf,'(I3,X,I2,X,I1)') sel(jgra,isel),sel(jscan,isel),sel(jpix,isel)
        write(*,'(I3,"/",I2,"/",I1)') sel(jgra,isel),sel(jscan,isel),sel(jpix,isel)
     end do
