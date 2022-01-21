@@ -5,7 +5,7 @@ module extract_spectra_mod
   integer, parameter :: jgra = 1, jscan = 2, jpix = 3
   integer, parameter :: ichan_ref = 2119
   real(8), parameter :: nuchan_ref = 1174.5, dnu = 0.25
-  real(8), parameter :: nu1 = 1180.0, nu2 = 1360.0 ! 1345.0
+  ! real(8), parameter :: nu1 = 1180.0, nu2 = 1345.0
 contains
   function channel_of_nu(nu,hi)
     real(8), intent(in) :: nu
@@ -37,6 +37,7 @@ contains
     integer, allocatable :: sel(:,:)
     integer :: narg
     integer :: isel,igra,iscan,ipix,ichan,ichan1,ichan2
+    real(8) :: nu1,nu2
 
     allocate(mdr,giadr_quality,recs(MAX_RECORDS))
     
@@ -50,6 +51,17 @@ contains
     if (m == 0) stop 'Specify output file'
     allocate(character(len=m) :: out_fn)
     call get_command_argument(2,out_fn)
+
+    call get_command_argument(3,length=m)
+    if (m == 0) stop 'Specify nu1'
+    call get_command_argument(3,buf)
+    read(buf,*) nu1
+
+    call get_command_argument(3,length=m)
+    if (m == 0) stop 'Specify nu2'
+    call get_command_argument(3,buf)
+    read(buf,*) nu2
+    write(*,*) 'Spectral range: ',nu1,' to ',nu2
 
     narg = command_argument_count()
     nsel = narg - 2
