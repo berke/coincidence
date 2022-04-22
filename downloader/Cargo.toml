@@ -66,3 +66,7 @@ path = "src/fptool.rs"
 [[bin]]
 name = "s5pdownload"
 path = "src/s5pdownload.rs"
+
+[[bin]]
+name = "mkretmap"
+path = "src/mkretmap.rs"
