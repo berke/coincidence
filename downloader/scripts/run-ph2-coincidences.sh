@@ -57,10 +57,10 @@ main() {
 		    fail "Could not run coincidence script, see $out_base.log"
 		fi
 	    else
-		msg "Skipping $NUM because first input file $IN1 is missing"
+		msg "Skipping $NUM because second input file $IN2 is missing"
 	    fi
 	else
-	    msg "Skipping $NUM because second input file $IN2 is missing"
+	    msg "Skipping $NUM because first input file $IN1 is missing"
 	fi
     done
 }
