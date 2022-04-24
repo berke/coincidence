@@ -70,3 +70,7 @@ path = "src/s5pdownload.rs"
 [[bin]]
 name = "mkretmap"
 path = "src/mkretmap.rs"
+
+[[bin]]
+name = "mapmaker"
+path = "src/mapmaker.rs"

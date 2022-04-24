@@ -16,7 +16,7 @@ use misc_error::MiscError;
 use footprint::{Footprint,FootprintLike,Footprints};
 use ndarray::{s,Array1,Array2};
 use std::collections::{BTreeMap,BTreeSet};
-use fancy_footprint::FancyFootprint;
+use fancy_footprint::{FancyFootprint,FancyFootprints};
 
 fn main()->Result<(),Box<dyn Error>> {
     simple_logger::SimpleLogger::new().init()?;
@@ -211,6 +211,11 @@ fn main()->Result<(),Box<dyn Error>> {
     let geojson_fn = format!("{}-footprints.geojson",out_base);
     info!("Exporting GeoJSON to {:?}",geojson_fn);
     footprint::export_geojson(&footprints,&geojson_fn)?;
+
+    let fancy_fn = format!("{}-ffp.mpk",out_base);
+    info!("Exporting fancy footprints to to {:?}",fancy_fn);
+    let ffp = FancyFootprints{ footprints };
+    ffp.save_to_file(&fancy_fn)?;
 
     let cmp_fn = format!("{}-cmp.h5",out_base);
     info!("Exporting comparison data to {:?}",cmp_fn);
