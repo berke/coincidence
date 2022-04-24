@@ -79,3 +79,29 @@ pub fn outline_to_multipolygon(outline:&Vec<Vec<Vec<(f64,f64)>>>)->MultiPolygon<
     }
     MultiPolygon::from(u)
 }
+
+pub fn outline_points(outline:&Vec<Vec<Vec<(f64,f64)>>>)->Vec<(f64,f64)> {
+    let mut pts = Vec::new();
+    for poly in outline.iter() {
+	for ring in poly.iter() {
+	    for &pt in ring.iter() {
+		pts.push(pt);
+	    }
+	}
+    }
+    pts
+}
+
+pub fn bounding_box(pts:&[(f64,f64)])->((f64,f64),(f64,f64)) {
+    let mut x0 = f64::INFINITY;
+    let mut x1 = f64::NEG_INFINITY;
+    let mut y0 = f64::INFINITY;
+    let mut y1 = f64::NEG_INFINITY;
+    for &(x,y) in pts {
+	x0 = x0.min(x);
+	x1 = x1.max(x);
+	y0 = y0.min(y);
+	y1 = y1.max(y);
+    }
+    ((x0,x1),(y0,y1))
+}
