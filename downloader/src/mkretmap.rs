@@ -24,7 +24,15 @@ struct FancyFootprint {
     xch4_prior:f64,
     sigma_xch4_prior:f64,
     xch4_tropomi:f64,
-    sigma_xch4_tropomi:f64
+    sigma_xch4_tropomi:f64,
+    t_unix:f64,
+    t_unix_tropomi:f64,
+    lat:f64,
+    lon:f64,
+    lat_tropomi:f64,
+    lon_tropomi:f64,
+    converged:bool,
+    chi2:f64
 }
 
 impl FootprintLike for FancyFootprint {
@@ -42,6 +50,14 @@ impl FootprintLike for FancyFootprint {
 	map.insert(String::from("sigma_xch4_prior"),to_value(self.sigma_xch4_prior).unwrap());
 	map.insert(String::from("xch4_tropomi"),to_value(self.xch4_tropomi).unwrap());
 	map.insert(String::from("sigma_xch4_tropomi"),to_value(self.sigma_xch4_tropomi).unwrap());
+	map.insert(String::from("t_unix"),to_value(self.t_unix).unwrap());
+	map.insert(String::from("t_unix_tropomi"),to_value(self.t_unix_tropomi).unwrap());
+	map.insert(String::from("lat"),to_value(self.lat).unwrap());
+	map.insert(String::from("lon"),to_value(self.lon).unwrap());
+	map.insert(String::from("lat_tropomi"),to_value(self.lat_tropomi).unwrap());
+	map.insert(String::from("lon_tropomi"),to_value(self.lon_tropomi).unwrap());
+	map.insert(String::from("converged"),to_value(self.converged).unwrap());
+	map.insert(String::from("chi2"),to_value(self.chi2).unwrap());
 	map
     }
 }
@@ -151,10 +167,20 @@ fn main()->Result<(),Box<dyn Error>> {
     let mut sigma_xch4_iasi_arr = Array1::zeros(nret);
     let mut xch4_tropomi_arr = Array1::zeros(nret);
     let mut sigma_xch4_tropomi_arr = Array1::zeros(nret);
+    let mut t_unix_arr = Array1::zeros(nret);
+    let mut t_unix_tropomi_arr = Array1::zeros(nret);
+    let mut lat_arr = Array1::zeros(nret);
+    let mut lon_arr = Array1::zeros(nret);
+    let mut lat_tropomi_arr = Array1::zeros(nret);
+    let mut lon_tropomi_arr = Array1::zeros(nret);
+    let mut converged_arr = Array1::from_elem(nret,false);
+    let mut chi2_arr = Array1::zeros(nret);
     for (iret,Retrieval{ path,prefix,base,igra,iscan,ipix }) in retrievals.iter().enumerate() {
 	info!("Opening retrieval file {:?}",path);
 	let fd = hdf5::File::open(path)?;
 
+	let converged : bool = fd.dataset("/res/converged")?.read_scalar()?;
+	let chi2 : f64 = fd.dataset("/res/loss/value")?.read_scalar()?;
 	let xstar : Array1<f64> = fd.dataset("/res/xstar")?.read_1d()?;
 	let sxp : Array2<f64> = fd.dataset("/oi/sxp")?.read_2d()?;
 	let xa : Array1<f64> = fd.dataset("/prior/mean")?.read_1d()?;
@@ -179,13 +205,27 @@ fn main()->Result<(),Box<dyn Error>> {
 	let spc_fd = hdf5::File::open(spc_path)?;
 	let xch4_tropomi = spc_fd.dataset("/tropomi/xch4_corr")?.read_scalar()?;
 	let sigma_xch4_tropomi = spc_fd.dataset("/tropomi/xch4_sigma")?.read_scalar()?;
+	let t_unix = spc_fd.dataset("/t_unix")?.read_scalar()?;
+	let t_unix_tropomi = spc_fd.dataset("/tropomi/t_unix")?.read_scalar()?;
+	let lat = spc_fd.dataset("/lat")?.read_scalar()?;
+	let lon = spc_fd.dataset("/lon")?.read_scalar()?;
+	let lat_tropomi = spc_fd.dataset("/tropomi/lat")?.read_scalar()?;
+	let lon_tropomi = spc_fd.dataset("/tropomi/lon")?.read_scalar()?;
 
+	converged_arr[iret] = converged;
+	chi2_arr[iret] = chi2;
 	xch4_prior_arr[iret] = xch4_prior;
 	sigma_xch4_prior_arr[iret] = sigma_xch4_prior;
 	xch4_iasi_arr[iret] = xch4;
 	sigma_xch4_iasi_arr[iret] = sigma_xch4;
 	xch4_tropomi_arr[iret] = xch4_tropomi;
 	sigma_xch4_tropomi_arr[iret] = sigma_xch4_tropomi;
+	t_unix_arr[iret] = t_unix;
+	t_unix_tropomi_arr[iret] = t_unix_tropomi;
+	lat_arr[iret] = lat;
+	lon_arr[iret] = lon;
+	lat_tropomi_arr[iret] = lat_tropomi;
+	lon_tropomi_arr[iret] = lon_tropomi;
 
 	let id = format!("{}/{}/{}/{}",base,igra,iscan,ipix);
 	if let Some(fp) = index.get(&id) {
@@ -196,7 +236,15 @@ fn main()->Result<(),Box<dyn Error>> {
 		xch4_prior,
 		sigma_xch4_prior,
 		xch4_tropomi,
-		sigma_xch4_tropomi
+		sigma_xch4_tropomi,
+		t_unix,
+		t_unix_tropomi,
+		lat,
+		lon,
+		lat_tropomi,
+		lon_tropomi,
+		converged,
+		chi2
 	    };
 	    footprints.push(ffp);
 	} else {
@@ -211,19 +259,26 @@ fn main()->Result<(),Box<dyn Error>> {
     let cmp_fn = format!("{}-cmp.h5",out_base);
     info!("Exporting comparison data to {:?}",cmp_fn);
     let cmp_fd = hdf5::File::create(cmp_fn)?;
-    //cmp_fd.new_dataset_builder().with_data(&xch4_iasi_arr).create("xch4_iasi")?;
 
-    let wr = |name:&str,arr:&Array1<f64>|->Result<(),Box<dyn Error>> {
-	cmp_fd.new_dataset::<f64>().create(name,arr.dim())?
-	    .write(arr.view())?;
+    fn wrg<T:hdf5::H5Type>(fd:&hdf5::File,name:&str,arr:&Array1<T>)->Result<(),Box<dyn Error>> {
+	fd.new_dataset::<T>().create(name,arr.dim())?.write(arr.view())?;
 	Ok(())
-    };
-    wr("xch4_prior",&xch4_prior_arr)?;
-    wr("xch4_iasi",&xch4_iasi_arr)?;
-    wr("xch4_tropomi",&xch4_tropomi_arr)?;
-    wr("sigma_xch4_prior",&sigma_xch4_prior_arr)?;
-    wr("sigma_xch4_iasi",&sigma_xch4_iasi_arr)?;
-    wr("sigma_xch4_tropomi",&sigma_xch4_tropomi_arr)?;
+    }
+
+    wrg(&cmp_fd,"xch4_prior",&xch4_prior_arr)?;
+    wrg(&cmp_fd,"xch4_iasi",&xch4_iasi_arr)?;
+    wrg(&cmp_fd,"xch4_tropomi",&xch4_tropomi_arr)?;
+    wrg(&cmp_fd,"sigma_xch4_prior",&sigma_xch4_prior_arr)?;
+    wrg(&cmp_fd,"sigma_xch4_iasi",&sigma_xch4_iasi_arr)?;
+    wrg(&cmp_fd,"sigma_xch4_tropomi",&sigma_xch4_tropomi_arr)?;
+    wrg(&cmp_fd,"t_unix",&t_unix_arr)?;
+    wrg(&cmp_fd,"t_unix_tropomi",&t_unix_tropomi_arr)?;
+    wrg(&cmp_fd,"lat",&lat_arr)?;
+    wrg(&cmp_fd,"lon",&lon_arr)?;
+    wrg(&cmp_fd,"lat_tropomi",&lat_tropomi_arr)?;
+    wrg(&cmp_fd,"lon_tropomi",&lon_tropomi_arr)?;
+    wrg(&cmp_fd,"converged",&converged_arr)?;
+    wrg(&cmp_fd,"chi2",&chi2_arr)?;
 
     Ok(())
 }
