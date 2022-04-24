@@ -4,7 +4,6 @@ mod footprint;
 mod minisvg;
 mod amcut;
 mod poly_utils;
-mod fancy_footprint;
 
 use std::error::Error;
 use std::ffi::OsString;
@@ -16,7 +15,52 @@ use misc_error::MiscError;
 use footprint::{Footprint,FootprintLike,Footprints};
 use ndarray::{s,Array1,Array2};
 use std::collections::{BTreeMap,BTreeSet};
-use fancy_footprint::FancyFootprint;
+use serde_json::{Map,to_value};
+
+struct FancyFootprint {
+    fp:Footprint,
+    xch4:f64,
+    sigma_xch4:f64,
+    xch4_prior:f64,
+    sigma_xch4_prior:f64,
+    xch4_tropomi:f64,
+    sigma_xch4_tropomi:f64,
+    t_unix:f64,
+    t_unix_tropomi:f64,
+    lat:f64,
+    lon:f64,
+    lat_tropomi:f64,
+    lon_tropomi:f64,
+    converged:bool,
+    chi2:f64
+}
+
+impl FootprintLike for FancyFootprint {
+    fn orbit(&self)->usize { self.fp.orbit() }
+    fn id(&self)->&str { self.fp.id() }
+    fn platform(&self)->&str { self.fp.platform() }
+    fn instrument(&self)->&str { self.fp.instrument() }
+    fn time_interval(&self)->(f64,f64) { self.fp.time_interval() }
+    fn outline(&self)->&Vec<Vec<Vec<(f64,f64)>>> { self.fp.outline() }
+    fn properties(&self)->Map<String,serde_json::Value> {
+	let mut map = Map::new();
+	map.insert(String::from("xch4"),to_value(self.xch4).unwrap());
+	map.insert(String::from("sigma_xch4"),to_value(self.sigma_xch4).unwrap());
+	map.insert(String::from("xch4_prior"),to_value(self.xch4_prior).unwrap());
+	map.insert(String::from("sigma_xch4_prior"),to_value(self.sigma_xch4_prior).unwrap());
+	map.insert(String::from("xch4_tropomi"),to_value(self.xch4_tropomi).unwrap());
+	map.insert(String::from("sigma_xch4_tropomi"),to_value(self.sigma_xch4_tropomi).unwrap());
+	map.insert(String::from("t_unix"),to_value(self.t_unix).unwrap());
+	map.insert(String::from("t_unix_tropomi"),to_value(self.t_unix_tropomi).unwrap());
+	map.insert(String::from("lat"),to_value(self.lat).unwrap());
+	map.insert(String::from("lon"),to_value(self.lon).unwrap());
+	map.insert(String::from("lat_tropomi"),to_value(self.lat_tropomi).unwrap());
+	map.insert(String::from("lon_tropomi"),to_value(self.lon_tropomi).unwrap());
+	map.insert(String::from("converged"),to_value(self.converged).unwrap());
+	map.insert(String::from("chi2"),to_value(self.chi2).unwrap());
+	map
+    }
+}
 
 fn main()->Result<(),Box<dyn Error>> {
     simple_logger::SimpleLogger::new().init()?;
