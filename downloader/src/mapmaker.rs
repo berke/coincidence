@@ -19,18 +19,20 @@ fn sq(x:f64)->f64 { x*x }
 
 pub struct Filter {
     pub mu:f64,
-    pub sigma:f64
+    pub sigma:f64,
+    pub count:usize
 }
 
 impl Filter {
     pub fn new(mu:f64,sigma:f64)->Self {
-	Self{ mu,sigma }
+	Self{ mu,sigma,count:0 }
     }
 
     pub fn add(&mut self,mu:f64,sigma:f64) {
 	let alpha = sq(sigma) / (sq(self.sigma) + sq(sigma));
 	self.mu = alpha*self.mu + (1.0 - alpha)*mu;
 	self.sigma = (alpha*self.sigma).hypot((1.0 - alpha)*sigma);
+	self.count += 1;
     }
 }
 
@@ -80,6 +82,10 @@ fn main()->Result<(),Box<dyn Error>> {
     let dims = (nlat,nlon);
     info!("Creating {} by {} map",nlon,nlat);
 
+    let mu_alt = 100.0;
+    let sigma_alt_prior = 200.0;
+    let sigma_alt = 5.0;
+
     let dlat = (lat1 - lat0) / (nlat - 1) as f64;
     let dlon = (lon1 - lon0) / (nlon - 1) as f64;
     let lats = Array1::from_shape_fn(
@@ -92,6 +98,7 @@ fn main()->Result<(),Box<dyn Error>> {
     let mut field = Array2::from_shape_fn(dims,|_| Filter::new(mu_xch4,sigma_xch4));
     let mut field_prior = Array2::from_shape_fn(dims,|_| Filter::new(mu_xch4,sigma_xch4));
     let mut field_tropomi = Array2::from_shape_fn(dims,|_| Filter::new(mu_xch4,sigma_xch4));
+    let mut field_alt = Array2::from_shape_fn(dims,|_| Filter::new(mu_alt,sigma_alt_prior));
 
     for fp in ffp.footprints {
 	if !fp.converged {
@@ -111,6 +118,7 @@ fn main()->Result<(),Box<dyn Error>> {
 		    field[[ilat,ilon]].add(fp.xch4,fp.sigma_xch4);
 		    field_tropomi[[ilat,ilon]].add(fp.xch4_tropomi,fp.sigma_xch4_tropomi);
 		    field_prior[[ilat,ilon]].add(fp.xch4_prior,fp.sigma_xch4_prior);
+		    field_alt[[ilat,ilon]].add(fp.alt,sigma_alt);
 		}
 	    }
 	}
@@ -133,8 +141,10 @@ fn main()->Result<(),Box<dyn Error>> {
 		   field:&Array2<Filter>)->Result<(),Box<dyn Error>> {
 	let mu_xch4s = field.map(|f| f.mu);
 	let sigma_xch4s = field.map(|f| f.sigma);
+	let counts = field.map(|f| f.count);
 	wrg2(fd,&format!("xch4{}",suffix),&mu_xch4s)?;
 	wrg2(fd,&format!("sigma_xch4{}",suffix),&sigma_xch4s)?;
+	wrg2(fd,&format!("count{}",suffix),&counts)?;
 	Ok(())
     }
 
@@ -144,5 +154,7 @@ fn main()->Result<(),Box<dyn Error>> {
     write_field(&fd,"",&field)?;
     write_field(&fd,"_prior",&field_prior)?;
     write_field(&fd,"_tropomi",&field_tropomi)?;
+    let mu_alts = field_alt.map(|f| f.mu);
+    wrg2(&fd,"alts",&mu_alts)?;
     Ok(())
 }

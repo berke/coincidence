@@ -25,12 +25,14 @@ fn main()->Result<(),Box<dyn Error>> {
     let args = App::new("mkretmap")
 	.arg(Arg::with_name("out").short("o").long("output").value_name("PATH").takes_value(true).required(true))
 	.arg(Arg::with_name("input").short("i").long("input").value_name("PATH").takes_value(true).required(true))
+	.arg(Arg::with_name("spc").short("s").long("spc").value_name("PATH").takes_value(true).required(true))
 	.arg(Arg::with_name("iasifpdir").long("iasifpdir").value_name("PATH").takes_value(true).required(true))
 	.arg(Arg::with_name("limit").long("limit").value_name("N").takes_value(true).required(false))
 	.get_matches();
 
     let out_base = args.value_of("out").expect("Specify output base");
     let input_dir = args.value_of("input").expect("Specify input directory");
+    let spc_dir = args.value_of("spc").expect("Specify spectrum directory");
     let iasi_fp_dir = args.value_of("iasifpdir").expect("Specify IASI footprint directory");
     let limit = args.value_of("limit").map(|x| x.parse::<usize>().expect("Invalid count"));
     
@@ -127,10 +129,14 @@ fn main()->Result<(),Box<dyn Error>> {
     let mut t_unix_tropomi_arr = Array1::zeros(nret);
     let mut lat_arr = Array1::zeros(nret);
     let mut lon_arr = Array1::zeros(nret);
+    let mut alt_arr = Array1::zeros(nret);
     let mut lat_tropomi_arr = Array1::zeros(nret);
     let mut lon_tropomi_arr = Array1::zeros(nret);
     let mut converged_arr = Array1::from_elem(nret,false);
     let mut chi2_arr = Array1::zeros(nret);
+    let mut xch4_prior_prof_arro : Option<Array2<f64>> = None;
+    let mut xch4_iasi_prof_arro : Option<Array2<f64>> = None;
+    
     for (iret,Retrieval{ path,prefix,base,igra,iscan,ipix }) in retrievals.iter().enumerate() {
 	info!("Opening retrieval file {:?}",path);
 	let fd = hdf5::File::open(path)?;
@@ -145,6 +151,25 @@ fn main()->Result<(),Box<dyn Error>> {
 	let ch4_i0 : usize = im_ch4.dataset("i0")?.read_scalar()?;
 	let ch4_i1 : usize = im_ch4.dataset("i1")?.read_scalar()?;
 	let operator_tc : Array1<f64> = im_ch4.dataset("units/ppmv_tc/operator")?.read_1d()?;
+	let operator_prof : Array2<f64> = im_ch4.dataset("units/ppmv_prof/operator")?.read_2d()?;
+
+	let nlay = ch4_i1 - ch4_i0;
+	if iret == 0 {
+	    xch4_prior_prof_arro = Some(Array2::zeros((nret,nlay)));
+	    xch4_iasi_prof_arro = Some(Array2::zeros((nret,nlay)));
+	}
+
+	xch4_prior_prof_arro
+	    .as_mut()
+	    .unwrap()
+	    .slice_mut(s![iret,..])
+	    .assign(&operator_prof.dot(&xa.slice(s![ch4_i0..ch4_i1])));
+
+	xch4_iasi_prof_arro
+	    .as_mut()
+	    .unwrap()
+	    .slice_mut(s![iret,..])
+	    .assign(&operator_prof.dot(&xstar.slice(s![ch4_i0..ch4_i1])));
 
 	let sx_ch4 = sx.slice(s![ch4_i0..ch4_i1,ch4_i0..ch4_i1]);
 	let sxp_ch4 = sxp.slice(s![ch4_i0..ch4_i1,ch4_i0..ch4_i1]);
@@ -155,7 +180,7 @@ fn main()->Result<(),Box<dyn Error>> {
 	let xch4_prior = operator_tc.dot(&xa.slice(s![ch4_i0..ch4_i1]));
 	let xch4 = operator_tc.dot(&xstar.slice(s![ch4_i0..ch4_i1]));
 
-	let mut spc_path = PathBuf::from(input_dir);
+	let mut spc_path = PathBuf::from(spc_dir);
 	spc_path.push(format!("{}-spc.h5",prefix));
 	info!("Opening spectrum file {:?}",spc_path);
 	let spc_fd = hdf5::File::open(spc_path)?;
@@ -165,6 +190,7 @@ fn main()->Result<(),Box<dyn Error>> {
 	let t_unix_tropomi = spc_fd.dataset("/tropomi/t_unix")?.read_scalar()?;
 	let lat = spc_fd.dataset("/lat")?.read_scalar()?;
 	let lon = spc_fd.dataset("/lon")?.read_scalar()?;
+	let alt = spc_fd.dataset("/alt")?.read_scalar()?;
 	let lat_tropomi = spc_fd.dataset("/tropomi/lat")?.read_scalar()?;
 	let lon_tropomi = spc_fd.dataset("/tropomi/lon")?.read_scalar()?;
 
@@ -180,6 +206,7 @@ fn main()->Result<(),Box<dyn Error>> {
 	t_unix_tropomi_arr[iret] = t_unix_tropomi;
 	lat_arr[iret] = lat;
 	lon_arr[iret] = lon;
+	alt_arr[iret] = alt;
 	lat_tropomi_arr[iret] = lat_tropomi;
 	lon_tropomi_arr[iret] = lon_tropomi;
 
@@ -197,6 +224,7 @@ fn main()->Result<(),Box<dyn Error>> {
 		t_unix_tropomi,
 		lat,
 		lon,
+		alt,
 		lat_tropomi,
 		lon_tropomi,
 		converged,
@@ -226,6 +254,13 @@ fn main()->Result<(),Box<dyn Error>> {
 	Ok(())
     }
 
+    fn wrg2<T:hdf5::H5Type>(fd:&hdf5::File,name:&str,arr:&Array2<T>)->Result<(),Box<dyn Error>> {
+	fd.new_dataset::<T>().create(name,arr.dim())?.write(arr.view())?;
+	Ok(())
+    }
+
+    wrg2(&cmp_fd,"xch4_iasi_prof",&xch4_iasi_prof_arro.unwrap())?;
+    wrg2(&cmp_fd,"xch4_prior_prof",&xch4_prior_prof_arro.unwrap())?;
     wrg(&cmp_fd,"xch4_prior",&xch4_prior_arr)?;
     wrg(&cmp_fd,"xch4_iasi",&xch4_iasi_arr)?;
     wrg(&cmp_fd,"xch4_tropomi",&xch4_tropomi_arr)?;
@@ -236,6 +271,7 @@ fn main()->Result<(),Box<dyn Error>> {
     wrg(&cmp_fd,"t_unix_tropomi",&t_unix_tropomi_arr)?;
     wrg(&cmp_fd,"lat",&lat_arr)?;
     wrg(&cmp_fd,"lon",&lon_arr)?;
+    wrg(&cmp_fd,"alt",&alt_arr)?;
     wrg(&cmp_fd,"lat_tropomi",&lat_tropomi_arr)?;
     wrg(&cmp_fd,"lon_tropomi",&lon_tropomi_arr)?;
     wrg(&cmp_fd,"converged",&converged_arr)?;
