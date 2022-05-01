@@ -136,6 +136,7 @@ fn main()->Result<(),Box<dyn Error>> {
     let mut chi2_arr = Array1::zeros(nret);
     let mut xch4_prior_prof_arro : Option<Array2<f64>> = None;
     let mut xch4_iasi_prof_arro : Option<Array2<f64>> = None;
+    let mut play_arro : Option<Array2<f64>> = None;
     
     for (iret,Retrieval{ path,prefix,base,igra,iscan,ipix }) in retrievals.iter().enumerate() {
 	info!("Opening retrieval file {:?}",path);
@@ -152,11 +153,13 @@ fn main()->Result<(),Box<dyn Error>> {
 	let ch4_i1 : usize = im_ch4.dataset("i1")?.read_scalar()?;
 	let operator_tc : Array1<f64> = im_ch4.dataset("units/ppmv_tc/operator")?.read_1d()?;
 	let operator_prof : Array2<f64> = im_ch4.dataset("units/ppmv_prof/operator")?.read_2d()?;
+	let play : Array1<f64> = im_ch4.dataset("units/ppmv_prof/play_hPa")?.read_1d()?;
 
 	let nlay = ch4_i1 - ch4_i0;
 	if iret == 0 {
 	    xch4_prior_prof_arro = Some(Array2::zeros((nret,nlay)));
 	    xch4_iasi_prof_arro = Some(Array2::zeros((nret,nlay)));
+	    play_arro = Some(Array2::zeros((nret,nlay)));
 	}
 
 	xch4_prior_prof_arro
@@ -170,6 +173,12 @@ fn main()->Result<(),Box<dyn Error>> {
 	    .unwrap()
 	    .slice_mut(s![iret,..])
 	    .assign(&operator_prof.dot(&xstar.slice(s![ch4_i0..ch4_i1])));
+
+	play_arro
+	    .as_mut()
+	    .unwrap()
+	    .slice_mut(s![iret,..])
+	    .assign(&play);
 
 	let sx_ch4 = sx.slice(s![ch4_i0..ch4_i1,ch4_i0..ch4_i1]);
 	let sxp_ch4 = sxp.slice(s![ch4_i0..ch4_i1,ch4_i0..ch4_i1]);
@@ -261,6 +270,7 @@ fn main()->Result<(),Box<dyn Error>> {
 
     wrg2(&cmp_fd,"xch4_iasi_prof",&xch4_iasi_prof_arro.unwrap())?;
     wrg2(&cmp_fd,"xch4_prior_prof",&xch4_prior_prof_arro.unwrap())?;
+    wrg2(&cmp_fd,"play",&play_arro.unwrap())?;
     wrg(&cmp_fd,"xch4_prior",&xch4_prior_arr)?;
     wrg(&cmp_fd,"xch4_iasi",&xch4_iasi_arr)?;
     wrg(&cmp_fd,"xch4_tropomi",&xch4_tropomi_arr)?;
