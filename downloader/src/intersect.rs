@@ -140,6 +140,7 @@ fn main()->Result<(),Box<dyn Error>> {
 
     let mut n_time_match = 0;
     let mut n_insufficient_time_overlap = 0;
+    let mut n_no_intersection = 0;
     let mut n_insufficient_overlap = 0;
 
     let report_fd = File::create(report_fn)?;
@@ -269,6 +270,7 @@ fn main()->Result<(),Box<dyn Error>> {
 			    n_insufficient_overlap += 1;
 			}
 		    } else {
+			n_no_intersection += 1;
 			trace!("No intersection: {} vs {} (time difference {})",f1.id,f2.id,min_delta_t);
 
 			if save_no_inter {
@@ -296,6 +298,7 @@ fn main()->Result<(),Box<dyn Error>> {
     info!("Number of pairs tested: {}",n_time_match);
     info!("Number of pairs rejected due to insufficient overlapping pseudo-area: {}",n_insufficient_overlap);
     info!("Number of pairs rejected due to insufficient time overlap: {}",n_insufficient_time_overlap);
+    info!("Number of pairs rejected due to lack of intersection: {}",n_no_intersection);
     info!("Number of intersections found: {}",n_inter);
     
     Ok(())
