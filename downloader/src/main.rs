@@ -343,6 +343,22 @@ fn convert_eumetsat_product(id:&str,obj:&json::JsonValue)->Result<Footprint,Box<
     }
 }
 
+async fn get_iasi_footprints(id:&str,url:&str)->Result<Footprint,Box<dyn Error>> {
+    println!("Checking footprints for {}",id);
+    let resp = reqwest::get(url)
+	.await?
+	.text()
+	.await?;
+    let obj = json::parse(&resp)?;
+    match convert_eumetsat_product(id,&obj) {
+	Ok(fp) => Ok(fp),
+	Err(e) => {
+	    eprintln!("Error processing {}: {}, url was {}",id,e,url);
+	    Err(e)
+	}
+    }
+}
+
 async fn process_iasi(cfg:&config::IASI,year:i32,month:u32)->Result<Footprints,Box<dyn Error>> {
     // There seems to be an issue with percent-encoding of colons in the collection name
     let mut url = Url::parse(&format!("{}/{}",cfg.base_url,cfg.collection))?;
@@ -370,13 +386,7 @@ async fn process_iasi(cfg:&config::IASI,year:i32,month:u32)->Result<Footprints,B
     let mut footprints = Vec::new();
     let mut n_url = 0;
     for (id,url) in products.iter() {
-	println!("Checking footprints for {}",id);
-	let resp = reqwest::get(url)
-	    .await?
-	    .text()
-	    .await?;
-	let obj = json::parse(&resp)?;
-	match convert_eumetsat_product(id,&obj) {
+	match get_iasi_footprints(id,url).await {
 	    Ok(fp) => footprints.push(fp),
 	    Err(e) => {
 		eprintln!("Error processing {}: {}, url was {}",id,e,url);
