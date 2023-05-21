@@ -34,7 +34,7 @@ kind_of() {
 }
 
 main() {
-    while IFS=$'\t' read NUM T1 T2 X1 X2 X3 ID1 ID2 ; do
+    while IFS=$'\t' read NUM T1 T2 X1 X2 X3 ID1 ID2 LAT LON ; do
 	kind_of $ID1
 	K1=$kind
 	kind_of $ID2
