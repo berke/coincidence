@@ -229,7 +229,7 @@ mod config {
     pub struct Config {
 	pub out_path:String,
 	pub jobs:Vec<Job>,
-	pub draw_footprints:bool
+	pub draw_footprints:bool,
     }
 
     #[derive(Clone,Debug,Deserialize)]
@@ -268,7 +268,10 @@ mod config {
     pub struct IASI {
 	pub base_url:String,
 	pub collection:String,
-	pub limit:Option<usize>
+	pub limit:Option<usize>,
+
+	#[serde(default)]
+	pub dry_run:bool
     }
 }
 
@@ -359,47 +362,75 @@ async fn get_iasi_footprints(id:&str,url:&str)->Result<Footprint,Box<dyn Error>>
     }
 }
 
-async fn process_iasi(cfg:&config::IASI,year:i32,month:u32)->Result<Footprints,Box<dyn Error>> {
-    // There seems to be an issue with percent-encoding of colons in the collection name
+async fn process_iasi(cfg:&config::IASI,year:i32,month:u32)
+		      ->Result<Footprints,Box<dyn Error>> {
+    // There seems to be an issue with percent-encoding of colons in
+    // the collection name
     let mut url = Url::parse(&format!("{}/{}",cfg.base_url,cfg.collection))?;
     url.path_segments_mut()
 	.map_err(|_| "This URL cannot be a base")?
 	.extend(&["dates",&format!("{:04}",year),&format!("{:02}",month), "products"]);
     url.query_pairs_mut().append_pair("format","json");
     println!("Querying URL: {}",url);
-    let resp = reqwest::get(url)
-    	.await?
-    	.text()
-    	.await?;
-    let obj = json::parse(&resp)?;
+
     let mut products : Vec<(String,String)> = Vec::new();
-    for prod in obj["products"].members() {
-	if let Some(id) = prod["id"].as_str() {
-	    for lk in prod["links"].members() {
-		if let Some(url) = lk["href"].as_str() {
-		    products.push((id.to_string(),url.to_string()));
+    process_iasi_inner(url,&mut products).await?;
+
+    println!("Number of products: {}",products.len());
+
+    let mut footprints = Vec::new();
+
+    if !cfg.dry_run {
+	let mut n_url = 0;
+	for (id,url) in products.iter() {
+	    match get_iasi_footprints(id,url).await {
+		Ok(fp) => footprints.push(fp),
+		Err(e) => {
+		    eprintln!("Error processing {}: {}, url was {}",id,e,url);
+		}
+	    }
+	    n_url += 1;
+	    if let Some(lim) = cfg.limit {
+		if n_url > lim {
+		    break;
 		}
 	    }
 	}
     }
 
-    let mut footprints = Vec::new();
-    let mut n_url = 0;
-    for (id,url) in products.iter() {
-	match get_iasi_footprints(id,url).await {
-	    Ok(fp) => footprints.push(fp),
-	    Err(e) => {
-		eprintln!("Error processing {}: {}, url was {}",id,e,url);
+    Ok(Footprints{ footprints })
+}
+
+async fn process_iasi_inner(mut url:Url,
+			    products:&mut Vec<(String,String)>)
+			    ->Result<(),Box<dyn Error>> {
+    loop {
+	let resp = reqwest::get(url)
+	    .await?
+	    .text()
+	    .await?;
+
+	let obj = json::parse(&resp)?;
+
+	for prod in obj["products"].members() {
+	    if let Some(id) = prod["id"].as_str() {
+		for lk in prod["links"].members() {
+		    if let Some(url) = lk["href"].as_str() {
+			products.push((id.to_string(),url.to_string()));
+		    }
+		}
 	    }
 	}
-	n_url += 1;
-	if let Some(lim) = cfg.limit {
-	    if n_url > lim {
-		break;
-	    }
+
+	if let Some(url_next) = obj["next"]["href"].as_str() {
+	    url = Url::parse(url_next)?;
+	    println!("Next product at {}",url);
+	} else {
+	    break;
 	}
     }
-    Ok(Footprints{ footprints })
+
+    Ok(())
 }
 
 fn process(cfg:&Config)->Result<(),Box<dyn Error>> {
