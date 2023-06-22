@@ -196,3 +196,32 @@ else
 
     mv $FOUND.tmp $FOUND
 fi
+
+# 
+
+IASI_NATS=$OUT2/$TARGET/iasi-nats.txt
+S5P_NCS=$OUT2/$TARGET/s5p-ncs.txt
+S5P_ORBITS=$OUT2/$TARGET/s5p-orbits.txt
+S5P_SCRIPT=$OUT2/$TARGET/s5p-script
+
+if [ ! -e $IASI_NATS ]; then
+    msg "Computing unique promising IASI product IDs"
+    cut -f3 -d\  $FOUND | sort -u >$IASI_NATS
+fi
+
+if [ ! -e $S5P_NCS ]; then
+    msg "Computing unique promising S5P product IDs and orbit numbers"
+    cut -f2 -d\  $FOUND | sort -u >$S5P_NCS
+    cut -c53-57 $S5P_NCS | sort -u >$S5P_ORBITS
+fi
+
+if [ ! -e $S5P_SCRIPT ]; then
+    msg "Determining S5P download URLs"
+    $S5PDOWNLOAD --output $S5P_SCRIPT $(cat $S5P_ORBITS)
+fi
+
+msg "Launching IASI L1C downloads"
+IDS=$IASI_NATS scripts/iasi-l1c-download.sh $CONFIG
+
+msg "Launching S5P L2 downlads"
+SCRIPT=$S5P_SCRIPT scripts/tropomi-l2-download.sh $CONFIG
