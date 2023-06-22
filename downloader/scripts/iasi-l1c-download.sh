@@ -113,7 +113,7 @@ do_iasi() {
     local nat_out=$IASI_SAVE/$id
     local nat_out_tmp=$IASI_SAVE/$id.tmp
     if [ -e $nat_out ]; then
-	trace "File already downloaded"
+	trace "File already downloaded as $nat_out"
     else
 	trace "Re-downloading"
 	while true ; do

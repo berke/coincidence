@@ -38,19 +38,23 @@ trace() {
 }
 
 main() {
-    for nat in $* ; do
+    for nat_base in $* ; do
+	nat=$NAT_ROOT/$nat_base
 	echo $nat
 	id=${nat:t}
 	local work=$WORK_DIR/
+	mkdir -p $work
 	local tmp_nex=$work/$id.nex
 	local tmp_nex_log=$work/$id.nex.log
 	local tmp_mpk=$work/$id.mpk
 	local tmp_mpk_log=$work/$id.mpk.log
-	local out=$OUT_DIR/iasi/mpk-by-pixel
+	# local out=$OUT_DIR/iasi/mpk-by-pixel
+	mkdir -p $out
 	if [ -e $out/$id.mpk ]; then
 	    trace "Skipping already processed $nat"
 	else
 	    trace "Processing $nat"
+	    mkdir -p $out
 	    if ! $IASINAT2NEX $nat $tmp_nex >$tmp_nex_log 2>&1 ; then
 		error "Could not extract NEX from NAT for $id, RC $?"
 		continue

@@ -225,3 +225,69 @@ IDS=$IASI_NATS scripts/iasi-l1c-download.sh $CONFIG
 
 msg "Launching S5P L2 downlads"
 SCRIPT=$S5P_SCRIPT scripts/tropomi-l2-download.sh $CONFIG
+
+msg "Extracting IASI per-pixel footprints"
+NAT_ROOT=$OUT_DIR/iasi/nat out=$OUT2/$TARGET/iasi/mpk-by-pixel \
+			   zsh -x scripts/iasi-extr-mpk-by-pixel.sh $CONFIG \
+			   $(cat $IASI_NATS)
+
+S5P_FOI=$OUT2/$TARGET/s5p-foi.txt
+if [ ! -e $S5P_FOI ]; then
+    msg "Compiling list of S5P footprints of interest"
+    sed -e 's@^\([^/]*\)/\([0-9]*\)/\([0-9]*\)\t.*$@\1 \2 \3@p' \
+	$PAIRS |
+	cut -c53-57,84- |
+	sort -u |
+	awk 'BEGIN{prev=-1} { if($1 != prev) { prev=$1;printf("\n%d",prev); } printf(" %d,%d",$2,$3) }' |
+	grep -v '^$' >$S5P_FOI
+fi
+
+msg "Extracting S5P per-pixel footprints"
+echo "out=$OUT2/$TARGET/tropomi/mpk-by-pixel scripts/tropomi-extr-mpk-by-pixel.sh $CONFIG <$S5P_FOI"
+out=$OUT2/$TARGET/tropomi/mpk-by-pixel scripts/tropomi-extr-mpk-by-pixel.sh $CONFIG <$S5P_FOI
+
+msg "Computing per-pixel coincidences"
+PPC_CMD=$OUT2/$TARGET/run-pixel-coincidences.cmd
+
+OUT3=$OUT_DIR/ph3
+mkdir -p $OUT3/$TARGET
+
+rm -f $PPC_CMD
+
+NUM=0
+(while read ID1 ID2 ; do
+     (( NUM=NUM+1 ))
+     kind_of $ID1
+     K1=$kind
+     kind_of $ID2
+     K2=$kind
+     IN1=$OUT2/$TARGET/$K1/mpk-by-pixel/$ID1.mpk
+     IN2=$OUT2/$TARGET/$K2/mpk-by-pixel/$ID2.mpk
+     if [ -e $IN1 ]; then
+	 if [ -e $IN2 ]; then
+	     local out_base=$OUT3/$TARGET/inter-$NUM
+	     mkdir -p $OUT
+
+	     echo $INTERSECT \
+		  --input1 $IN1 \
+		  --input2 $IN2 \
+		  --lat0 $LAT0 --lat1 $LAT1 --lon0 $LON0 --lon1 $LON1 \
+		  --delta-t $DELTA_T \
+		  --tau $TAU \
+		  --report $out_base.txt \
+		  --t-min $T_MIN \
+		  --t-max $T_MAX \
+		  --min-overlap $RHO_PH3 \
+		  --omega $OMEGA \
+		  --output-base $out_base >>$PPC_CMD
+	 else
+	     msg "Skipping pair $NUM because second input file $IN2 is missing"
+	 fi
+     else
+	 msg "Skipping pair $NUM because first input file $IN1 is missing"
+     fi
+
+ done) <$PAIRS
+
+msg "Running per-pixel coincidences"
+parallel <$PPC_CMD
