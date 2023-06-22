@@ -10,63 +10,67 @@ DELTA_T=${DELTA_T:-3600.0}
 TAU=${TAU:-0.00}
 RHO=${RHO:-0.50}
 
-TARGET=${TARGET:-tar-sands}
+#TARGET=${TARGET:-tar-sands}
+# case $TARGET in
+#     four-corners)
+# 	LON0=${LON0:--109.6}
+# 	LON1=${LON1:--107.0}
+# 	LAT0=${LAT0:-36.2}
+# 	LAT1=${LAT1:-37.4}
+# 	T_MIN=${T_MIN:-"2019-06-01T00:00:00"}
+# 	T_MAX=${T_MAX:-"2019-10-01T00:00:00"}
+# 	;;
+#     tar-sands)
+# 	LON0=${LON0:--112.0}
+# 	LON1=${LON1:--111.0}
+# 	LAT0=${LAT0:-56.6}
+# 	LAT1=${LAT1:-57.5}
+# 	T_MIN=${T_MIN:-"2019-06-01T00:00:00"}
+# 	T_MAX=${T_MAX:-"2019-10-01T00:00:00"}
+# 	;;
+#     siberia-ext)
+# 	LON0=${LON0:-40.0}
+# 	LON1=${LON1:-190.0}
+# 	LAT0=${LAT0:-55.0}
+# 	LAT1=${LAT1:-78.0}
+# 	T_MIN=${T_MIN:-"2020-09-04T00:00:00"}
+# 	T_MAX=${T_MAX:-"2020-09-18T00:00:00"}
+# 	;;
+#     siberia)
+# 	LON0=${LON0:-62.0}
+# 	LON1=${LON1:-82.0}
+# 	LAT0=${LAT0:-53.0}
+# 	LAT1=${LAT1:-63.0}
+# 	T_MIN=${T_MIN:-"2019-06-01T00:00:00"}
+# 	T_MAX=${T_MAX:-"2019-10-01T00:00:00"}
+# 	;;
+#     nizhnevartovsk)
+# 	LON0=${LON0:-75.0}
+# 	LON1=${LON1:-78.0}
+# 	LAT0=${LAT0:-60.0}
+# 	LAT1=${LAT1:-62.0}
+# 	T_MIN=${T_MIN:-"2019-06-01T00:00:00"}
+# 	T_MAX=${T_MAX:-"2019-10-01T00:00:00"}
+# 	;;
+#     anywhere)
+# 	LON0=${LON0:--180.0}
+# 	LON1=${LON1:-180.0}
+# 	LAT0=${LAT0:--90.0}
+# 	LAT1=${LAT1:-90.0}
+# 	T_MIN=${T_MIN:-"2019-06-01T00:00:00"}
+# 	T_MAX=${T_MAX:-"2019-10-01T00:00:00"}
+# 	;;
+#     specific)
+# 	;;
+#     *)
+# 	echo "$0: Unknown target $TARGET" >&2
+# 	exit 1
+# esac
 
-case $TARGET in
-    four-corners)
-	LON0=${LON0:--109.6}
-	LON1=${LON1:--107.0}
-	LAT0=${LAT0:-36.2}
-	LAT1=${LAT1:-37.4}
-	T_MIN=${T_MIN:-"2019-06-01T00:00:00"}
-	T_MAX=${T_MAX:-"2019-10-01T00:00:00"}
-	;;
-    tar-sands)
-	LON0=${LON0:--112.0}
-	LON1=${LON1:--111.0}
-	LAT0=${LAT0:-56.6}
-	LAT1=${LAT1:-57.5}
-	T_MIN=${T_MIN:-"2019-06-01T00:00:00"}
-	T_MAX=${T_MAX:-"2019-10-01T00:00:00"}
-	;;
-    siberia-ext)
-	LON0=${LON0:-40.0}
-	LON1=${LON1:-190.0}
-	LAT0=${LAT0:-55.0}
-	LAT1=${LAT1:-78.0}
-	T_MIN=${T_MIN:-"2020-09-04T00:00:00"}
-	T_MAX=${T_MAX:-"2020-09-18T00:00:00"}
-	;;
-    siberia)
-	LON0=${LON0:-62.0}
-	LON1=${LON1:-82.0}
-	LAT0=${LAT0:-53.0}
-	LAT1=${LAT1:-63.0}
-	T_MIN=${T_MIN:-"2019-06-01T00:00:00"}
-	T_MAX=${T_MAX:-"2019-10-01T00:00:00"}
-	;;
-    nizhnevartovsk)
-	LON0=${LON0:-75.0}
-	LON1=${LON1:-78.0}
-	LAT0=${LAT0:-60.0}
-	LAT1=${LAT1:-62.0}
-	T_MIN=${T_MIN:-"2019-06-01T00:00:00"}
-	T_MAX=${T_MAX:-"2019-10-01T00:00:00"}
-	;;
-    anywhere)
-	LON0=${LON0:--180.0}
-	LON1=${LON1:-180.0}
-	LAT0=${LAT0:--90.0}
-	LAT1=${LAT1:-90.0}
-	T_MIN=${T_MIN:-"2019-06-01T00:00:00"}
-	T_MAX=${T_MAX:-"2019-10-01T00:00:00"}
-	;;
-    specific)
-	;;
-    *)
-	echo "$0: Unknown target $TARGET" >&2
-	exit 1
-esac
+if [ -z "$TARGET" ]; then
+    echo "$0: Specify target name via variable TARGET" >&2
+    exit 1
+fi
 
 mkdir -p $TARGET
 

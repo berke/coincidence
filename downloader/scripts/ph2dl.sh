@@ -9,6 +9,7 @@ fi
 
 source $1
 
+PH2_OUT_DIR=${PH2_OUT_DIR:-$OUT_DIR/ph2}
 IASI_ENABLE=${IASI_ENABLE:-1}
 TROPOMI_ENABLE=${TROPOMI_ENABLE:-1}
 
@@ -209,7 +210,7 @@ do_tropomi() {
     fi
 
     local work=$WORK_DIR/$id
-    local mpk_out=$OUT_DIR/tropomi/mpk/$id.mpk
+    local mpk_out=$PH2_OUT_DIR/tropomi/mpk/$id.mpk
 
     if [ -e $mpk_out ]; then
 	trace "Footprints have already been extracted for $id"
@@ -305,8 +306,8 @@ do_iasi() {
     fi
     
     local work=$WORK_DIR/$id
-    local nex_out=$OUT_DIR/iasi/nex/$id.nex
-    local mpk_out=$OUT_DIR/iasi/mpk/$id.mpk
+    local nex_out=$PH2_OUT_DIR/iasi/nex/$id.nex
+    local mpk_out=$PH2_OUT_DIR/iasi/mpk/$id.mpk
 
     if [ -e $mpk_out ]; then
 	trace "Footprints have already been extracted for $id"
@@ -392,6 +393,7 @@ do_iasi() {
 
 main() {
     mkdir -p $WORK_DIR
+    mkdir -p $PH2_OUT_DIR
 
     if [ -z "$INTER" ]; then
 	fail "Specify intersections file via environment variable INTER"
