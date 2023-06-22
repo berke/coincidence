@@ -7,7 +7,9 @@ if [ -z "$1" ]; then
     exit 1
 fi
 
-source $1
+CONFIG=$1
+
+source $CONFIG
 
 msg() {
     echo "- $*"
@@ -68,8 +70,8 @@ EOF
 	$DOWNLOADER $DOWNLOAD_CFG
     fi
 
-    TROPOMI_MPKS=( $TROPOMI_MPKS $OUT/$YEAR-$MONTH/*.mpk )
-    IASI_MPKS=( $IASI_MPKS $OUT/$YEAR-$MONTH/*.mpk )
+    TROPOMI_MPKS=( $TROPOMI_MPKS $OUT/$YEAR-$MONTH/tropomi-*.mpk )
+    IASI_MPKS=( $IASI_MPKS $OUT/$YEAR-$MONTH/iasi-*.mpk )
     
     if (( YEAR == STOP_YEAR && MONTH == STOP_MONTH )) then
 	break
@@ -94,7 +96,9 @@ if [ ! -e $OUT/$TARGET/iasi-all.mpk ]; then
     $FPTOOL $IASI_MPKS -c $OUT/$TARGET/iasi-all.mpk
 fi
 
-if [ ! -e $OUT/$TARGET/inter.txt ]; then
+INTER=$OUT/$TARGET/inter.txt
+
+if [ ! -e $INTER ]; then
     msg "Running intersection tool"
 
     $INTERSECT \
@@ -103,9 +107,92 @@ if [ ! -e $OUT/$TARGET/inter.txt ]; then
 	--lat0 $LAT0 --lat1 $LAT1 --lon0 $LON0 --lon1 $LON1 \
 	--delta-t $DELTA_T \
 	--tau $TAU \
-	--report $OUT/$TARGET/report.txt \
+	--report $INTER \
 	--t-min $T_MIN \
 	--t-max $T_MAX \
-	--min-overlap $RHO \
-	--output-base $OUT
+	--min-overlap $RHO_PH1 \
+	--output-base $OUT/$TARGET/inter
+fi
+
+if [ ! -e $OUT/$TARGET/inter.tracwiki ]; then
+    awk -e 'BEGIN{ FS="\t" }
+    { printf("|| %s || %s || %.1f || %.3f || [[https://s5phub.copernicus.eu/dhus/search?q=%s|S5P]] || [[https://api.eumetsat.int/data/download/products/%s|IASI]] || %04d ||\n",$2,$3,$4,$5,$7,$8,$1) }' \
+	$INTER | sort > $OUT/$TARGET/inter.tracwiki
+fi
+
+msg "Starting phase 2"
+INTER=$INTER scripts/ph2dl.sh $CONFIG
+
+msg "Computing phase 2 intersections"
+
+OUT2=$OUT_DIR/ph2
+mkdir -p $OUT2/$TARGET
+
+# Compute unique product pairs
+PAIRS=$OUT2/$TARGET/product-pairs.txt
+msg "Computing unique product pairs, saving to $PAIRS from $INTER"
+
+(while IFS=$'\t' read NUM T1 T2 X1 X2 X3 ID1 ID2 LAT LON ; do
+     echo "$ID1 $ID2"
+ done) <$INTER >$PAIRS
+
+kind_of() {
+    case $1 in
+	S5P_*) kind=tropomi;;
+	IASI_*) kind=iasi;;
+	*) fail "Cannot identify kind from $1";;
+    esac
+}
+
+# Run tool
+FOUND=$OUT2/$TARGET/found.dat
+
+if [ -e $FOUND ]; then
+    msg "Phase 2 intersections already computed in $FOUND"
+else
+    rm -f $FOUND.tmp
+    touch $FOUND.tmp
+
+    msg "Computing intersections"
+    NUM=0
+    (while read ID1 ID2 ; do
+	 kind_of $ID1
+	 K1=$kind
+	 kind_of $ID2
+	 K2=$kind
+	 IN1=$OUT_DIR/ph2/$K1/mpk/$ID1.mpk
+	 IN2=$OUT_DIR/ph2/$K2/mpk/$ID2.mpk
+
+	 local out_base=$OUT2/$TARGET/inter-$NUM
+	 mkdir -p $OUT
+	 (( NUM=NUM+1 ))
+	 NUM=${(l:6::0:)NUM}
+
+	 echo $INTERSECT \
+	     --input1 $IN1 \
+	     --input2 $IN2 \
+	     --lat0 $LAT0 --lat1 $LAT1 --lon0 $LON0 --lon1 $LON1 \
+	     --delta-t $DELTA_T \
+	     --tau $TAU \
+	     --report $out_base.txt \
+	     --t-min $T_MIN \
+	     --t-max $T_MAX \
+	     --min-overlap $RHO_PH2 \
+	     --output-base $out_base
+     done) <$PAIRS | parallel
+
+    NUM=0
+    (while read ID1 ID2 ; do
+	 (( NUM=NUM+1 ))
+	 NUM=${(l:6::0:)NUM}
+	 local out_base=$OUT2/$TARGET/inter-$NUM
+	 if [ -s $out_base.txt ]; then
+	     msg "Intersections found for $NUM ($ID1 vs $ID2)"
+	     echo $NUM $ID1 $ID2 >>$FOUND.tmp
+	 else
+	     msg "No intersections found for $NUM ($ID1 vs $ID2)"
+	 fi
+     done) <$PAIRS
+
+    mv $FOUND.tmp $FOUND
 fi

@@ -155,36 +155,53 @@ process() {
 
     msg "Need netCDF file from $URL"
 
-    local nc_out=$CACHEDIR/$FILE
-    local nc_out_tmp=$CACHEDIR/$FILE.tmp
 
-    if [ -e $nc_out ]; then
-	trace "File present in cache"
-    else
-	trace "Re-downloading"
-	bump_cache
-	while true ; do 
-	    if curl \
-		   -u $S5P_AUTH \
-		   --max-time $CURL_MAX_TIME \
-		   --location \
-		   -f \
-		   -k \
-		   $URL \
-		   -o $nc_out_tmp ; then
-		msg "Downloaded"
-		mv $nc_out_tmp $nc_out
-		throttle_ok
-		break
-	    else
-		error "Could not download $URL, RC $?"
-		throttle_fail
-	    fi
-	done
-    fi
+    local new_file
+    local found=0
 
     if [ ! -z "$TROPOMI_SAVE" ]; then
+	nc_out=$TROPOMI_SAVE/$FILE
+	if [ -e $nc_out ]; then
+	    msg "File already downloaded at $nc_out"
+	    new_file=0
+	    found=1
+	fi
+    fi
+
+    if [ $found != 1 ]; then
+	new_file=1
+	nc_out=$CACHEDIR/$FILE
+	local nc_out_tmp=$CACHEDIR/$FILE.tmp
+
+	if [ -e $nc_out ]; then
+	    trace "File present in cache"
+	else
+	    trace "Re-downloading"
+	    bump_cache
+	    while true ; do 
+		if curl \
+		       -u $S5P_AUTH \
+		       --max-time $CURL_MAX_TIME \
+		       --location \
+		       -f \
+		       -k \
+		       $URL \
+		       -o $nc_out_tmp ; then
+		    msg "Downloaded"
+		    mv $nc_out_tmp $nc_out
+		    throttle_ok
+		    break
+		else
+		    error "Could not download $URL, RC $?"
+		    throttle_fail
+		fi
+	    done
+	fi
+    fi
+
+    if [ $new_file = 1 -a ! -z "$TROPOMI_SAVE" ]; then
 	if [ ! -e $TROPOMI_SAVE/$FILE ]; then
+	    mkdir -p $TROPOMI_SAVE
 	    cp -l $nc_out $TROPOMI_SAVE/$FILE
 	fi
     fi
@@ -213,7 +230,7 @@ do_tropomi() {
     local mpk_out=$PH2_OUT_DIR/tropomi/mpk/$id.mpk
 
     if [ -e $mpk_out ]; then
-	trace "Footprints have already been extracted for $id"
+	trace "Footprints have already been extracted for $id under $mpk_out"
 	tropomi_count=$((tropomi_count + 1))
 	return
     fi
@@ -328,12 +345,31 @@ do_iasi() {
 
 	msg "Need NAT file from $url"
 
-	local nat_out=$CACHEDIR/$id
-	local nat_out_tmp=$CACHEDIR/$id.tmp
-	if [ -e $nat_out ]; then
-	    trace "File present in cache"
-	else
-	    trace "Re-downloading"
+	local nat_out
+	local new_file
+	local found=0
+	
+	if [ ! -z "$IASI_SAVE" ]; then
+	    nat_out=$IASI_SAVE/$id
+	    if [ -e "$nat_out" ]; then
+		msg "File already downloaded at $nat_out"
+		new_file=0
+		found=1
+	    fi
+	fi
+	
+	if [ $found != 1 ]; then
+	    new_file=1
+	    nat_out=$CACHEDIR/$id
+	    local nat_out_tmp=$CACHEDIR/$id.tmp
+	    if [ -e $nat_out ]; then
+		msg "File present in cache"
+		found=1
+	    fi
+	fi
+
+	if [ $found != 1 ]; then
+	    msg "Re-downloading"
 	    bump_cache
 	    while true ; do
 		check_eumetsat_api_token
@@ -356,9 +392,13 @@ do_iasi() {
 	    done
 	fi
 
-	if [ ! -z "$IASI_SAVE" ]; then
-	    if [ ! -e $IASI_SAVE/$FILE ]; then
-		cp -l $nat_out $IASI_SAVE/$FILE
+	msg "Found file at $nat_out"
+
+	if [ $new_file = 1 -a ! -z "$IASI_SAVE" ]; then
+	    msg "Saving file under $IASI_SAVE/$id"
+	    if [ ! -e $IASI_SAVE/$id ]; then
+		mkdir -p $IASI_SAVE
+		cp -l $nat_out $IASI_SAVE/$id
 	    fi
 	fi
 
