@@ -274,7 +274,8 @@ mod config {
 	pub dry_run:bool,
 
 	#[serde(default)]
-	pub num_retries:usize
+	pub num_retries:usize,
+	pub initial_timeout:f64
     }
 }
 
@@ -349,9 +350,14 @@ fn convert_eumetsat_product(id:&str,obj:&json::JsonValue)->Result<Footprint,Box<
     }
 }
 
-async fn get_iasi_footprints(id:&str,url:&str)->Result<Footprint,Box<dyn Error>> {
+async fn get_iasi_footprints(id:&str,url:&str,timeout:f64)
+			     ->Result<Footprint,Box<dyn Error>> {
     println!("Checking footprints for {}",id);
-    let resp = reqwest::get(url)
+    let resp = 
+	reqwest::Client::new()
+	.get(url)
+	.timeout(std::time::Duration::from_secs_f64(timeout))
+	.send()
 	.await?
 	.text()
 	.await?;
@@ -387,8 +393,9 @@ async fn process_iasi(cfg:&config::IASI,year:i32,month:u32)
 	let mut n_url = 0;
 	for (id,url) in products.iter() {
 	    let mut ok = false;
+	    let mut timeout = cfg.initial_timeout;
 	    for attempt in 0..cfg.num_retries + 1 {
-		match get_iasi_footprints(id,url).await {
+		match get_iasi_footprints(id,url,timeout).await {
 		    Ok(fp) => {
 			footprints.push(fp);
 			ok = true;
@@ -398,6 +405,7 @@ async fn process_iasi(cfg:&config::IASI,year:i32,month:u32)
 			eprintln!("Error processing {}: {}, url was {} (attempt {}/{})",
 				  id,e,url,
 				  attempt,cfg.num_retries + 1);
+			timeout *= 2.0;
 		    }
 		}
 	    }

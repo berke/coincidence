@@ -32,7 +32,7 @@ IASI_MPKS=( )
 while true ; do
     msg "Considering year $YEAR month $MONTH"
     MONTH=${(l:2::0:)MONTH}
-    if [ -e $OUT/$YEAR-$MONTH ] ; then
+    if [ -e $OUT/$YEAR-$MONTH/.completed ] ; then
        msg "Already downloaded $YEAR-$MONTH"
     else
 	msg "Downloading $YEAR-$MONTH"
@@ -59,7 +59,9 @@ while true ; do
 		IASI((
 		    collection:"EO%3AEUM%3ADAT%3AMETOP%3AIASIL1C-ALL",
 		    base_url:"https://api.eumetsat.int/data/browse/collections",
-		    limit:None
+		    limit:None,
+		    num_retries:5,
+		    initial_timeout:2.0
 		))
 	    ]
 	)
@@ -68,6 +70,7 @@ while true ; do
 EOF
 	
 	$DOWNLOADER $DOWNLOAD_CFG
+	touch $OUT/$YEAR-$MONTH/.completed
     fi
 
     TROPOMI_MPKS=( $TROPOMI_MPKS $OUT/$YEAR-$MONTH/tropomi-*.mpk )
