@@ -271,7 +271,10 @@ mod config {
 	pub limit:Option<usize>,
 
 	#[serde(default)]
-	pub dry_run:bool
+	pub dry_run:bool,
+
+	#[serde(default)]
+	pub num_retries:usize
     }
 }
 
@@ -383,17 +386,30 @@ async fn process_iasi(cfg:&config::IASI,year:i32,month:u32)
     if !cfg.dry_run {
 	let mut n_url = 0;
 	for (id,url) in products.iter() {
-	    match get_iasi_footprints(id,url).await {
-		Ok(fp) => footprints.push(fp),
-		Err(e) => {
-		    eprintln!("Error processing {}: {}, url was {}",id,e,url);
+	    let mut ok = false;
+	    for attempt in 0..cfg.num_retries + 1 {
+		match get_iasi_footprints(id,url).await {
+		    Ok(fp) => {
+			footprints.push(fp);
+			ok = true;
+			break;
+		    },
+		    Err(e) => {
+			eprintln!("Error processing {}: {}, url was {} (attempt {}/{})",
+				  id,e,url,
+				  attempt,cfg.num_retries + 1);
+		    }
 		}
 	    }
-	    n_url += 1;
-	    if let Some(lim) = cfg.limit {
-		if n_url > lim {
-		    break;
+	    if ok {
+		n_url += 1;
+		if let Some(lim) = cfg.limit {
+		    if n_url > lim {
+			break;
+		    }
 		}
+	    } else {
+		eprintln!("Was not able to process {}",id);
 	    }
 	}
     }
