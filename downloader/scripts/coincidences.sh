@@ -126,8 +126,6 @@ fi
 msg "Starting phase 2"
 INTER=$INTER scripts/ph2dl.sh $CONFIG
 
-msg "Computing phase 2 intersections"
-
 OUT2=$OUT_DIR/ph2
 mkdir -p $OUT2/$TARGET
 
@@ -231,15 +229,18 @@ SCRIPT=$S5P_SCRIPT scripts/tropomi-l2-download.sh $CONFIG
 
 msg "Extracting IASI per-pixel footprints"
 NAT_ROOT=$OUT_DIR/iasi/nat out=$OUT2/$TARGET/iasi/mpk-by-pixel \
-			   zsh -x scripts/iasi-extr-mpk-by-pixel.sh $CONFIG \
+			   scripts/iasi-extr-mpk-by-pixel.sh $CONFIG \
 			   $(cat $IASI_NATS)
 
+# XXXXXXXXX This needs to be done on phase 2 results
 S5P_FOI=$OUT2/$TARGET/s5p-foi.txt
 if [ ! -e $S5P_FOI ]; then
     msg "Compiling list of S5P footprints of interest"
-    sed -e 's@^\([^/]*\)/\([0-9]*\)/\([0-9]*\)\t.*$@\1 \2 \3@p' \
-	$PAIRS |
+    cat $OUT2/$TARGET/inter-??????.txt |
+	cut -f7 -d$'\t' |
+	sed -e 's@^\([^/]*\)/\([0-9]*\)/\([0-9]*\)\t.*$@\1 \2 \3@p' |
 	cut -c53-57,84- |
+	tr / ' ' |
 	sort -u |
 	awk 'BEGIN{prev=-1} { if($1 != prev) { prev=$1;printf("\n%d",prev); } printf(" %d,%d",$2,$3) }' |
 	grep -v '^$' >$S5P_FOI
