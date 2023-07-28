@@ -56,7 +56,7 @@ while read -A a ; do
 		 --output $tmp_mpk \
 		 --selection $sel \
 		 -- $nc >$tmp_mpk_log 2>&1 ; then
-		error "Could not extract MPK from NC for $id, RC $?"
+		error "Could not extract MPK from NC for $id, RC $?; see log file $tmp_mpk_log"
 		continue
 	    fi
 	    mv $tmp_mpk $out/$id.mpk

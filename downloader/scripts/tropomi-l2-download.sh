@@ -91,8 +91,20 @@ process() {
 		   -k \
 		   $URL \
 		   -o $nc_out_tmp ; then
-		msg "Downloaded"
-		mv $nc_out_tmp $nc_out
+		if [ -s $nc_out_tmp ]; then
+		    msg "Downloaded"
+		    # Check if the resulting file is a Zip file or not
+		    if [ "$(od -N2 -Anone -t x1 $nc_out_tmp | tr -d ' ')" = 504b ]; then
+			msg "Unzipping"
+			unzip $nc_out_tmp -x ${FILE:t:r} -p >$nc_out
+			rm -f $nc_out_tmp
+		    else
+			mv $nc_out_tmp $nc_out
+		    fi
+		else
+		    error "Got empty file from $URL"
+		    rm -f $nc_out_tmp
+		fi
 		throttle_ok
 		break
 	    else
