@@ -29,6 +29,11 @@ msg() {
     echo "$(date -Iseconds) MSG: $*" >>$LOG_FILE
 }
 
+warn() {
+    echo "W $*"
+    echo "$(date -Iseconds) MSG: $*" >>$LOG_FILE
+}
+
 error() {
     num_errors=$(( num_errors + 1 ))
     echo "$(date -Iseconds) ERROR: $*" >>$ERROR_LOG_FILE
@@ -98,7 +103,7 @@ bump_cache() {
 }
 
 fail_work_dir() {
-    local target=$FAILURE_DIR/${work}_$(date +%s)
+    local target=$FAILURE_DIR/${work:t}_$(date +%s)
     msg "Moving failed work directory $work to $target"
     mkdir -p $FAILURE_DIR
     mv $work $target
@@ -289,16 +294,26 @@ confirm_eumetsat_api_token() {
     throttle_ok
 }
 
-refresh_eumetsat_api_token() {
+try_to_refresh_eumetsat_api_token() {
     if curl -q -f -k -d "grant_type=client_credentials" \
 	    -H "Authorization: Basic $EUMETSAT_API_AUTH" \
+	    --max-time $CURL_MAX_TIME \
 	    https://api.eumetsat.int/token >$WORK_DIR/eumetsat_api.token ; then
 	EUMETSAT_API_TOKEN=$(sed -ne 's/^.*"access_token":"\([0-9a-z-]\+\)\".*$/\1/p' $WORK_DIR/eumetsat_api.token)
 	EUMETSAT_API_TOKEN_T=$(( $(date +%s) + $(sed -ne 's/^.*"expires_in":\([0-9]\+\).*$/\1/p' $WORK_DIR/eumetsat_api.token)))
 	msg "Got new EUMETSAT API token $EUMETSAT_API_TOKEN valid until $(date -d @$EUMETSAT_API_TOKEN_T)"
     else
-	fail "Could not get token"
+	warn "Could not get token"
+	false
     fi
+}
+
+refresh_eumetsat_api_token() {
+	local dt=5
+	while ! try_to_refresh_eumetsat_api_token ; do
+		sleep $dt
+		(( dt=2*dt ))
+	done
 }
 
 check_eumetsat_api_token() {
