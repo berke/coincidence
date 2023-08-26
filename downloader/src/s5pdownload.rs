@@ -18,7 +18,8 @@ struct Config{
     pub base_url:String,
     pub user_name:String,
     pub password:Option<String>,
-    pub limit:Option<usize>
+    pub limit:Option<usize>,
+    pub processing_mode:String
 }
 
 #[derive(Debug)]
@@ -60,7 +61,7 @@ async fn find_tropomi_download_info(cfg:&Config,
 	    .map_err(|_| "This URL cannot be a base")?
 	    .extend(&["dhus","search"]);
 	//let query = format!("{}",id);
-	let query = format!("platformname:Sentinel-5 AND producttype:L2__CH4___ AND orbitnumber:{}",orbit);
+	let query = format!("platformname:Sentinel-5 AND producttype:L2__CH4___ AND orbitnumber:{} AND processingmode:{}",orbit,cfg.processing_mode);
 	MiscError::convert(url.set_username(&cfg.user_name),"Cannot set user name")?;
 	if let Some(pwd) = &cfg.password {
 	    MiscError::convert(url.set_password(Some(&pwd)),"Cannot set password")?;
@@ -220,6 +221,7 @@ fn main()->Result<(),Box<dyn Error>> {
 	.arg(Arg::with_name("out").short("o").long("output").value_name("PATH").takes_value(true).required(true))
 	.arg(Arg::with_name("orbit").multiple(true).help("Orbits to download"))
 	.arg(Arg::with_name("verbose").short("v"))
+	.arg(Arg::with_name("processing_mode").short("m").long("processing-mode").takes_value(true).default_value("Reprocessing"))
 	.get_matches();
 
     let verbose = args.is_present("verbose");
@@ -233,6 +235,7 @@ fn main()->Result<(),Box<dyn Error>> {
 	.map(|o| o.parse::<u32>().unwrap())
 	.collect();
     let out_fn = args.value_of("out").expect("Specify output path");
+    let processing_mode = args.value_of("processing_mode").unwrap().to_string();
 
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
 
@@ -240,7 +243,8 @@ fn main()->Result<(),Box<dyn Error>> {
 	base_url:"https://s5phub.copernicus.eu".to_string(),
 	user_name:"s5pguest".to_string(),
 	password:Some("s5pguest".to_string()),
-	limit:Some(5)
+	limit:Some(5),
+    processing_mode
     };
 
     let out_fd = File::create(out_fn)?;
