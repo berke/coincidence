@@ -221,7 +221,7 @@ fn main()->Result<(),Box<dyn Error>> {
 	.arg(Arg::with_name("out").short("o").long("output").value_name("PATH").takes_value(true).required(true))
 	.arg(Arg::with_name("orbit").multiple(true).help("Orbits to download"))
 	.arg(Arg::with_name("verbose").short("v"))
-	.arg(Arg::with_name("processing_mode").short("m").long("processing-mode").takes_value(true).default_value("Reprocessing"))
+	.arg(Arg::with_name("processing_mode").short("m").long("processing-mode").takes_value(true).default_value("Offline"))
 	.get_matches();
 
     let verbose = args.is_present("verbose");
