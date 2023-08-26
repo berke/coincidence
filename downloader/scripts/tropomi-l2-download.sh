@@ -42,8 +42,8 @@ check_tools() {
     fi
 }
 
-throttle_min=60
-throttle_max=3600
+throttle_min=1
+throttle_max=60
 throttle_current=$throttle_min
 
 throttle_fail() {
@@ -77,12 +77,14 @@ process() {
 
     local nc_out=$TROPOMI_SAVE/$FILE
     local nc_out_tmp=$nc_out.tmp
+    local attempt=1
 
     if [ -e $nc_out ]; then
-	trace "File already downloaded"
+	msg "File already downloaded under $nc_out"
     else
 	trace "Downloading to $nc_out"
-	while true ; do 
+	for ((attempt=1;;attempt++)) ; do
+	    msg "Attempt $attempt for $FILE"
 	    if curl \
 		   -u $S5P_AUTH \
 		   --max-time $CURL_MAX_TIME \
@@ -101,12 +103,13 @@ process() {
 		    else
 			mv $nc_out_tmp $nc_out
 		    fi
+		    throttle_ok
+		    break
 		else
 		    error "Got empty file from $URL"
 		    rm -f $nc_out_tmp
+		    throttle_fail
 		fi
-		throttle_ok
-		break
 	    else
 		error "Could not download $URL, RC $?"
 		throttle_fail

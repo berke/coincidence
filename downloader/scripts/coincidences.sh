@@ -53,7 +53,7 @@ while true ; do
 		    password:Some("s5pguest"),
 		    platform_name:"Sentinel-5",
 		    product_type:"L2__CH4___",
-		    processing_mode:"Offline",
+		    processing_mode:"$S5P_PROCESSING_MODE",
 		    limit:None
 		)),
 		IASI((
@@ -218,7 +218,7 @@ fi
 
 if [ ! -e $S5P_SCRIPT ]; then
     msg "Determining S5P download URLs"
-    $S5PDOWNLOAD --output $S5P_SCRIPT $(cat $S5P_ORBITS)
+    $S5PDOWNLOAD --output $S5P_SCRIPT --processing-mode $S5P_PROCESSING_MODE $(cat $S5P_ORBITS)
 fi
 
 msg "Launching IASI L1C downloads"

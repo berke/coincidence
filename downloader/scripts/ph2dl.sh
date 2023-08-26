@@ -254,7 +254,9 @@ do_tropomi() {
 
     local s5pdownload_out=$work/process.sh
     local s5pdownload_log=$work/s5pdownload.log
-    if $S5PDOWNLOAD --output $s5pdownload_out $orbit >$s5pdownload_log 2>&1 ; then
+    if $S5PDOWNLOAD \
+	    --processing-mode $S5P_PROCESSING_MODE \
+	    --output $s5pdownload_out $orbit >$s5pdownload_log 2>&1 ; then
 	trace "Sourcing $s5pdownload_out"
 	processor_error=0
 	processor_done=0
