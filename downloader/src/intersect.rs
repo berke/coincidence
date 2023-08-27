@@ -20,6 +20,8 @@ use geo_clipper::Clipper;
 use footprint::Footprints;
 use poly_utils::{clip_to_roi,outline_to_multipolygon,FACTOR};
 
+use misc_error::MiscError;
+
 fn check_intersection(m1:&MultiPolygon<f64>,m2:&MultiPolygon<f64>)->Option<(f64,MultiPolygon<f64>)> {
     if m1.intersects(m2) {
 	let mv1 : Vec<&Polygon<f64>> = m1.iter().collect();
@@ -63,24 +65,22 @@ fn main()->Result<(),Box<dyn Error>> {
 	     .help("Starting latitude of ROI").allow_hyphen_values(true))
 	.arg(Arg::with_name("lat1").long("lat1").default_value("52.0")
 	     .help("Ending latitude of ROI").allow_hyphen_values(true))
-	.arg(Arg::with_name("delta_t").long("delta-t").default_value("13200.0")
+	.arg(Arg::with_name("delta_t_max").long("delta-t-max").default_value("13200.0")
 	     .help("Maximum mean time difference (s)"))
-	.arg(Arg::with_name("tau_min").long("tau").default_value("0.0")
+	.arg(Arg::with_name("tau_min").long("tau-min").default_value("0.0")
 	     .help("Minimum temporal overlap ratio"))
-	.arg(Arg::with_name("min_overlap").long("min-overlap").default_value("0.50")
-	     .help("Minimal overal pseudo-area fraction with respect to ROI"))
 	.arg(Arg::with_name("t_min").long("t-min").help("Start of time range").takes_value(true))
 	.arg(Arg::with_name("t_max").long("t-max").help("End of time range").takes_value(true))
 	.arg(Arg::with_name("verbose").short("v"))
 	.arg(Arg::with_name("save_no_inter").long("save-no-inter").help("Save diagnostic MPK files for pairs that do not have an intersection"))
-	.arg(Arg::with_name("rho_by_fp").long("rho-by-fp").help("Normalize rho by the footprint area, not the ROI area"))
-	.arg(Arg::with_name("omega").long("omega").default_value("0.0")
-	     .help("Maximum ROI clipping preservation ratio"))
+	.arg(Arg::with_name("psi_min").long("psi-min").default_value("0.50")
+	     .help("Minimal overlap ratio between footprints"))
+	.arg(Arg::with_name("omega_min").long("omega-min").default_value("0.0")
+	     .help("Minimum overlap ratio with ROI"))
 	.get_matches();
 
     let verbose = args.is_present("verbose");
     let save_no_inter = args.is_present("save_no_inter");
-    let rho_by_fp = args.is_present("rho_by_fp");
 
     simple_logger::SimpleLogger::new()
 	.with_level(if verbose { log::LevelFilter::Trace } else { log::LevelFilter::Info })
@@ -90,8 +90,7 @@ fn main()->Result<(),Box<dyn Error>> {
     let fp2_fn = args.value_of("input2").unwrap();
     let report_fn = args.value_of("report").unwrap();
 
-    let min_overlap : f64 = args.value_of("min_overlap").unwrap().parse().expect("Invalid spatial overlap threshold");
-    let delta_t_max : f64 = args.value_of("delta_t").unwrap().parse().expect("Invalid time limit");
+    let delta_t_max : f64 = args.value_of("delta_t_max").unwrap().parse().expect("Invalid time limit");
     let tau_min : f64 = args.value_of("tau_min").unwrap().parse().expect("Invalid temporal overlap threshold");
     let lon0 : f64 = args.value_of("lon0").unwrap().parse().expect("Invalid starting longitude");
     let lat0 : f64 = args.value_of("lat0").unwrap().parse().expect("Invalid starting latitude");
@@ -111,7 +110,8 @@ fn main()->Result<(),Box<dyn Error>> {
 	} else {
 	    std::f64::INFINITY
 	};
-    let omega : f64 = args.value_of("omega").unwrap().parse().expect("Invalid omega value");
+    let omega_min : f64 = args.value_of("omega").unwrap().parse().expect("Invalid omega value");
+    let psi_min : f64 = args.value_of("psi").unwrap().parse().expect("Invalid psi value");
 
     info!("ROI: latitudes {} to {}, longitudes {} to {}",lat0,lat1,lon0,lon1);
     let roi =
@@ -123,7 +123,7 @@ fn main()->Result<(),Box<dyn Error>> {
 		(lon0,lat1)
 	    ]),
 	    vec![]);
-    let roi_area = roi.unsigned_area();
+    // let roi_area = roi.unsigned_area();
 
     info!("Loading first set of footprints from {}",fp1_fn);
     let fps1 = Footprints::from_file(fp1_fn)?;
@@ -158,7 +158,7 @@ fn main()->Result<(),Box<dyn Error>> {
 	let f1_area = f1_mp0.unsigned_area();
 	if let Some(f1_mp) = clip_to_roi(&roi,&f1_mp0) {
 	    let f1_mp_area = f1_mp.unsigned_area();
-	    if f1_mp_area >= omega*f1_area {
+	    if f1_mp_area >= omega_min*f1_area {
 		fps_in_roi1.push((i1,f1_mp,f1_area));
 	    }
 	} else {
@@ -176,7 +176,7 @@ fn main()->Result<(),Box<dyn Error>> {
 	let f2_area = f2_mp0.unsigned_area();
 	if let Some(f2_mp) = clip_to_roi(&roi,&f2_mp0) {
 	    let f2_mp_area = f2_mp.unsigned_area();
-	    if f2_mp_area >= omega*f2_area {
+	    if f2_mp_area >= omega_min*f2_area {
 		fps_in_roi2.push((i2,f2_mp,f2_area));
 	    }
 	} else {
@@ -219,28 +219,31 @@ fn main()->Result<(),Box<dyn Error>> {
 		n_time_match += 1;
 		if tau >= tau_min {
 		    if let Some((area,inter_mp)) = check_intersection(f1_mp,f2_mp) {
-			let area_ratio =
-			    if rho_by_fp {
-				area / f1_area.min(f2_area)
-			    } else {
-				area / roi_area
-			    };
-			if area_ratio >= min_overlap {
+			let psi = area / f1_area.min(f2_area);
+			if psi >= psi_min {
 			    let t0 = f1.time_interval.0.min(f2.time_interval.0);
 			    let t1 = f1.time_interval.1.max(f2.time_interval.1);
-			    let ts0 = Utc.timestamp(t0.floor() as i64,(t0.fract() * 1e9 + 0.5).floor() as u32);
-			    let ts1 = Utc.timestamp(t1.floor() as i64,(t1.fract() * 1e9 + 0.5).floor() as u32);
+			    let ts0 =
+				Utc.timestamp_opt(
+				    t0.floor() as i64,
+				    (t0.fract() * 1e9 + 0.5).floor() as u32)
+				.unwrap();
+			    let ts1 =
+				Utc.timestamp_opt(
+				    t1.floor() as i64,
+				    (t1.fract() * 1e9 + 0.5).floor() as u32)
+				.unwrap();
 			    trace!("F1 {:?} F2 {:?}",f1.time_interval,f2.time_interval);
 
-			    trace!("Intersection {:04}: {} vs {} (time difference {}, tau {}), pseudo-area ratio: {}, time: {} to {}",
-				   n_inter,f1.id,f2.id,min_delta_t,tau,area_ratio,ts0,ts1);
+			    trace!("Intersection {:04}: {} vs {} (time difference {}, tau {}), psi: {}, time: {} to {}",
+				   n_inter,f1.id,f2.id,min_delta_t,tau,psi,ts0,ts1);
 
 			    if let Some(c) = inter_mp.centroid() {
 				writeln!(report_buf,"{:04}\t{}\t{}\t{:5.1}\t{:5.3}\t{:5.3}\t{}\t{}\t{:5.3}\t{:5.3}",
 					 n_inter,
 					 ts0,
 					 ts1,
-					 min_delta_t,tau,area_ratio,f1.id,f2.id,
+					 min_delta_t,tau,psi,f1.id,f2.id,
 					 c.x(),
 					 c.y())?;
 			    } else {
@@ -296,9 +299,9 @@ fn main()->Result<(),Box<dyn Error>> {
 	}
     }
     info!("Number of pairs tested: {}",n_time_match);
-    info!("Number of pairs rejected due to insufficient overlapping pseudo-area: {}",n_insufficient_overlap);
-    info!("Number of pairs rejected due to insufficient time overlap: {}",n_insufficient_time_overlap);
-    info!("Number of pairs rejected due to lack of intersection: {}",n_no_intersection);
+    info!("Number of pairs rejected due to insufficient time overlap (tau): {}",n_insufficient_time_overlap);
+    info!("Number of pairs rejected due to lack of intersection with region (omega): {}",n_no_intersection);
+    info!("Number of pairs rejected due to insufficient overlapping pseudo-area (psi): {}",n_insufficient_overlap);
     info!("Number of intersections found: {}",n_inter);
     
     Ok(())
