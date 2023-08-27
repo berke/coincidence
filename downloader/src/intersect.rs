@@ -110,8 +110,10 @@ fn main()->Result<(),Box<dyn Error>> {
 	} else {
 	    std::f64::INFINITY
 	};
-    let omega_min : f64 = args.value_of("omega").unwrap().parse().expect("Invalid omega value");
-    let psi_min : f64 = args.value_of("psi").unwrap().parse().expect("Invalid psi value");
+    let omega_min : f64 = args.value_of("omega_min")
+	.unwrap().parse().expect("Invalid omega value");
+    let psi_min : f64 = args.value_of("psi_min")
+	.unwrap().parse().expect("Invalid psi value");
 
     info!("ROI: latitudes {} to {}, longitudes {} to {}",lat0,lat1,lon0,lon1);
     let roi =

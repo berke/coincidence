@@ -280,11 +280,11 @@ NUM=0
 		  --lat0 $LAT0 --lat1 $LAT1 --lon0 $LON0 --lon1 $LON1 \
 		  --report $out_base.txt \
 		  --delta-t-max $DELTA_T \
-		  --tau $TAU \
+		  --tau-min $TAU \
 		  --t-min $T_MIN \
 		  --t-max $T_MAX \
-		  --psi $PSI_PH3 \
-		  --omega $OMEGA_PH3 \
+		  --psi-min $PSI_PH3 \
+		  --omega-min $OMEGA_PH3 \
 		  --output-base $out_base >>$PPC_CMD
 	 else
 	     msg "Skipping pair $NUM because second input file $IN2 is missing"
