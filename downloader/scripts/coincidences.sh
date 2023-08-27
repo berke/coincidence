@@ -271,8 +271,9 @@ NUM=0
      IN2=$OUT2/$TARGET/$K2/mpk-by-pixel/$ID2.mpk
      if [ -e $IN1 ]; then
 	 if [ -e $IN2 ]; then
-	     local out_base=$OUT3/$TARGET/inter-$NUM
-	     mkdir -p $OUT
+	     local out_dir=$OUT3/$TARGET/i${(l:6::0:)NUM}
+	     local out_base=$out_dir/i${(l:6::0:)NUM}
+	     mkdir -p $out_dir
 
 	     echo $INTERSECT \
 		  --input1 $IN1 \
@@ -295,5 +296,5 @@ NUM=0
 
  done) <$PAIRS
 
-msg "Running per-pixel coincidences"
+msg "Running per-pixel coincidences on $PPC_CMD"
 parallel <$PPC_CMD
