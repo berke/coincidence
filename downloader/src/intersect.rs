@@ -140,10 +140,10 @@ fn main()->Result<(),Box<dyn Error>> {
     info!("Number of footprints in first file: {}",n1);
     info!("Number of footprints in second file: {}",n2);
 
-    let mut n_time_match = 0;
-    let mut n_insufficient_time_overlap = 0;
-    let mut n_no_intersection = 0;
-    let mut n_insufficient_overlap = 0;
+    let mut n_not_in_time_interval1 = 0;
+    let mut n_not_in_time_interval2 = 0;
+    let mut n_omega_too_low1 = 0;
+    let mut n_omega_too_low2 = 0;
 
     let report_fd = File::create(report_fn)?;
     let mut report_buf = BufWriter::new(report_fd);
@@ -154,6 +154,7 @@ fn main()->Result<(),Box<dyn Error>> {
     for i1 in 0..n1 {
 	let f1 = &fps1.footprints[i1];
 	if !(t_min <= f1.time_interval.0 && f1.time_interval.1 < t_max) {
+	    n_not_in_time_interval1 += 1;
 	    continue;
 	}
 	let f1_mp0 = outline_to_multipolygon(&f1.outline);
@@ -162,15 +163,18 @@ fn main()->Result<(),Box<dyn Error>> {
 	    let f1_mp_area = f1_mp.unsigned_area();
 	    if f1_mp_area >= omega_min*f1_area {
 		fps_in_roi1.push((i1,f1_mp,f1_area));
+		continue;
 	    }
 	} else {
 	    trace!("Rejected {} as it does not meet the ROI",f1.id);
 	}
+	n_omega_too_low1 += 1;
     }
 
     for i2 in 0..n2 {
 	let f2 = &fps2.footprints[i2];
 	if !(t_min <= f2.time_interval.0 && f2.time_interval.1 < t_max) {
+	    n_not_in_time_interval2 += 1;
 	    continue;
 	}
 
@@ -180,23 +184,39 @@ fn main()->Result<(),Box<dyn Error>> {
 	    let f2_mp_area = f2_mp.unsigned_area();
 	    if f2_mp_area >= omega_min*f2_area {
 		fps_in_roi2.push((i2,f2_mp,f2_area));
+		continue;
 	    }
 	} else {
 	    trace!("Rejected {} as it does not meet the ROI",f2.id);
 	}
+	n_omega_too_low2 += 1;
     }
 
     info!("Number of footprints in first file meeting the ROI: {} ({:5.2}%)",
 	  fps_in_roi1.len(),
 	  100.0*fps_in_roi1.len() as f64/n1 as f64);
+    info!("  of which rejected due to not meeting the time interval: {}, low omega: {}",
+	  n_not_in_time_interval1,
+	  n_omega_too_low1);
     info!("Number of footprints in second file meeting the ROI: {} ({:5.2}%)",
 	  fps_in_roi2.len(),
 	  100.0*fps_in_roi2.len() as f64/n2 as f64);
+    info!("  of which rejected due to not meeting the time interval: {}, low omega: {}",
+	  n_not_in_time_interval2,
+	  n_omega_too_low2);
+
+    let mut n_pairs_tested = 0;
+    let mut n_delta_t_too_high = 0;
+    let mut n_tau_too_low = 0;
+    let mut n_psi_too_low = 0;
+    let mut n_no_intersection = 0;
 
     for &(i1,ref f1_mp,f1_area) in fps_in_roi1.iter() {
 	let f1 = &fps1.footprints[i1];
 	for &(i2,ref f2_mp,f2_area) in fps_in_roi2.iter() {
 	    let f2 = &fps2.footprints[i2];
+
+	    n_pairs_tested += 1;
 
 	    let min_delta_t =
 		if f1.time_interval.1 <= f2.time_interval.0 {
@@ -218,7 +238,6 @@ fn main()->Result<(),Box<dyn Error>> {
 			(f1.time_interval.1.min(f2.time_interval.1) - f1.time_interval.0.max(f2.time_interval.0)) /
 			    (f1.time_interval.1.max(f2.time_interval.1) - f1.time_interval.0.min(f2.time_interval.0))
 		    };
-		n_time_match += 1;
 		if tau >= tau_min {
 		    if let Some((area,inter_mp)) = check_intersection(f1_mp,f2_mp) {
 			let psi = area / f1_area.min(f2_area);
@@ -267,12 +286,12 @@ fn main()->Result<(),Box<dyn Error>> {
 				f2ci.outline = poly_utils::multipolygon_to_vec(f2_mp);
 				inter.outline = poly_utils::multipolygon_to_vec(&inter_mp);
 				let fps = Footprints{ footprints:vec![f1c,f2c,f1ci,f2ci,inter] };
-				fps.save_to_file(&format!("{}-{:05}.mpk",fp_fn,n_inter))?;
+				fps.save_to_file(&format!("{}p{:06}.mpk",fp_fn,n_inter))?;
 			    }
 			    
 			    n_inter += 1;
 			} else {
-			    n_insufficient_overlap += 1;
+			    n_psi_too_low += 1;
 			}
 		    } else {
 			n_no_intersection += 1;
@@ -287,23 +306,25 @@ fn main()->Result<(),Box<dyn Error>> {
 				f1c.outline = poly_utils::multipolygon_to_vec(f1_mp);
 				f2c.outline = poly_utils::multipolygon_to_vec(f2_mp);
 				let fps = Footprints{ footprints:vec![f1c,f2c] };
-				fps.save_to_file(&format!("{}-no_inter-{:05}-{:05}.mpk",fp_fn,i1,i2))?;
+				fps.save_to_file(&format!("{}-no_inter-{:06}-{:06}.mpk",fp_fn,i1,i2))?;
 			    }
 			}
 		    }
 		} else {
-		    n_insufficient_time_overlap += 1;
+		    n_tau_too_low += 1;
 		    trace!("Rejected {} vs {} due to tau = {}",f1.id,f2.id,tau);
 		}
 	    } else {
+		n_delta_t_too_high += 1;
 		trace!("Rejected {} vs {} due to delta_t = {}",f1.id,f2.id,min_delta_t);
 	    }
 	}
     }
-    info!("Number of pairs tested: {}",n_time_match);
-    info!("Number of pairs rejected due to insufficient time overlap (tau): {}",n_insufficient_time_overlap);
-    info!("Number of pairs rejected due to lack of intersection with region (omega): {}",n_no_intersection);
-    info!("Number of pairs rejected due to insufficient overlapping pseudo-area (psi): {}",n_insufficient_overlap);
+    info!("Number of pairs tested: {}",n_pairs_tested);
+    info!("  ...rejected due to high delta t: {}",n_delta_t_too_high);
+    info!("  ...rejected due to lack of intersection: {}",n_no_intersection);
+    info!("  ...rejected due to low tau: {}",n_tau_too_low);
+    info!("  ...rejected due to low psi: {}",n_psi_too_low);
     info!("Number of intersections found: {}",n_inter);
     
     Ok(())
