@@ -88,9 +88,19 @@ impl Iterator for IASINexIterator {
 				.map(|x| MiscError::convert(x.parse::<f64>(),"Invalid float"))
 				.collect::<Result<Vec<f64>,_>>() {
 				    Ok(fs) => {
-					let t_pixel = DateTime::<Utc>::from_utc(
-					    NaiveDate::from_ymd(us[2],us[3] as u32,us[4] as u32)
-						.and_hms(us[6] as u32,us[7] as u32,us[8] as u32),Utc);
+					let t_pixel =
+					    DateTime::<Utc>::from_utc(
+						NaiveDate::from_ymd_opt(
+						    us[2],
+						    us[3] as u32,
+						    us[4] as u32)
+						    .unwrap()
+						    .and_hms_opt(
+							us[6] as u32,
+							us[7] as u32,
+							us[8] as u32)
+						    .unwrap(),
+						Utc);
 					let t = t_pixel.timestamp_millis() as f64 / 1000.0;
 					let igra = us[0] as u32;
 					let iscan = us[1] as u32;
@@ -153,6 +163,7 @@ fn main()->Result<(),Box<dyn Error>> {
 	let mut igra = 1;
 	let mut done = false;
 	let mut ncross = 0;
+	let mut nshift = 0;
 
 	while !done {
 	    let mut flush = None;
@@ -191,22 +202,41 @@ fn main()->Result<(),Box<dyn Error>> {
 			    }
 			    let sc = &scan[iscan];
 
-			    let a = sc.outline[0]; // XXX check order
-			    let b = sc.outline[1];
-			    let c = sc.outline[2];
-			    let d = sc.outline[3];
+			    let a0 = sc.outline[0]; // XXX check order
+			    let b0 = sc.outline[1];
+			    let c0 = sc.outline[2];
+			    let d0 = sc.outline[3];
+
+			    let lon_offset =
+				if amcut::crosses_antimeridian(&vec![d0,c0,b0,a0]) {
+				    nshift += 1;
+				    180.0
+				} else {
+				    0.0
+				};
+
+			    let lon_shift = |x:f64,phi:f64|->f64 {
+				(x + phi + 180.0).rem_euclid(360.0) - 180.0
+			    };
+
+			    let shift = |(x,y):(f64,f64)|->(f64,f64) {
+				(lon_shift(x,lon_offset),y)
+			    };
+			    let unshift = |(x,y):(f64,f64)|->(f64,f64) {
+				(lon_shift(x,360.0 - lon_offset),y)
+			    };
+
+			    let a = shift(a0);
+			    let b = shift(b0);
+			    let c = shift(c0);
+			    let d = shift(d0);
 
 			    let centroid = sca(0.25,add(add(a,b),add(c,d)));
 
-			    if amcut::crosses_antimeridian(&vec![d,c,b,a]) {
-				ncross += 1;
-				continue;
-			    }
-			    
 			    let inter = |u:f64,v:f64|->(f64,f64) {
 				let e = mix(a,u,d);
 				let f = mix(b,u,c);
-				mix(e,v,f)
+				unshift(mix(e,v,f))
 			    };
 			    let ntheta = 8;
 			    for ipix in (0..4).rev() {
@@ -219,7 +249,7 @@ fn main()->Result<(),Box<dyn Error>> {
 				    let u = 0.5 + r*theta.cos();
 				    let v = 0.5 + r*theta.sin();
 				    let delta = sub(inter(u,v),centroid);
-				    ring.push(add((x,y),delta));
+				    ring.push(unshift(add((x,y),delta)));
 				}
 
 				let mut outline = Vec::new();
@@ -231,7 +261,7 @@ fn main()->Result<(),Box<dyn Error>> {
 				let (x,y) = sc.outline[ipix];
 				if !mp.contains(&Point::new(x,y)) {
 				    warn!("Granule {} scan {} pixel {} coordinates x={} y={} not contained in\n{:#?}",
-				    igra,iscan + 1,ipix + 1,x,y,mp);
+					  igra,iscan + 1,ipix + 1,x,y,mp);
 				}
 
 				let fp = Footprint{
@@ -287,7 +317,10 @@ fn main()->Result<(),Box<dyn Error>> {
 		}
 	    }
 	}
-	info!("Number of scan lines that have been split due to crossing the meridian boundary: {}",ncross);
+	info!("Number of scan lines that have been split due to\
+	       crossing the meridian boundary: {} (shifted {})",
+	      ncross,
+	      nshift);
     }
     let fps = Footprints{ footprints };
     fps.save_to_file(out_fn)?;
