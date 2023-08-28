@@ -23,7 +23,11 @@ fn process(geo_fn:&str,footprints:&mut Vec<Footprint>)->Result<(),Box<dyn Error>
     let platform : &hdf5::types::FixedAscii<[u8;16]> = &fd.attribute("Platform_Short_Name")?.read_raw()?[0];
     info!("Platform: {}",platform);
 
-    let iet_t0 = DateTime::<Utc>::from_utc(NaiveDate::from_ymd(1958,1,1).and_hms(0,0,0),Utc);
+    let iet_t0 = DateTime::<Utc>::from_utc(
+	NaiveDate::from_ymd_opt(1958,1,1).unwrap()
+	    .and_hms_opt(0,0,0)
+	    .unwrap(),
+	Utc);
 
     let gr = fd.group("/Data_Products/CrIS-SDR-GEO")?;
     let instrument : &hdf5::types::FixedAscii<[u8;16]> = &gr.attribute("Instrument_Short_Name")?.read_raw()?[0];

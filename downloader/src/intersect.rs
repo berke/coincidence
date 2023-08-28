@@ -20,8 +20,6 @@ use geo_clipper::Clipper;
 use footprint::Footprints;
 use poly_utils::{clip_to_roi,outline_to_multipolygon,FACTOR};
 
-use misc_error::MiscError;
-
 fn check_intersection(m1:&MultiPolygon<f64>,m2:&MultiPolygon<f64>)->Option<(f64,MultiPolygon<f64>)> {
     if m1.intersects(m2) {
 	let mv1 : Vec<&Polygon<f64>> = m1.iter().collect();

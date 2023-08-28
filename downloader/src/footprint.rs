@@ -108,7 +108,11 @@ impl Footprints {
 	    ms.multi_polygon(&fp.outline)?;
 	    let (lon0,lat0) = fp.max_coords();
 	    let t = fp.mean_time();
-	    let ts = Utc.timestamp(t.floor() as i64,(t.fract() * 1e9 + 0.5).floor() as u32);
+	    let ts =
+		Utc.timestamp_opt(
+		    t.floor() as i64,
+		    (t.fract() * 1e9 + 0.5).floor() as u32)
+		.unwrap();
 	    let tss = ts.format("%H:%M");
 	    ms.set_fill(Some((0x000000,1.00)));
 	    ms.text(lon0,lat0,0.2,&tss.to_string())?;
@@ -175,7 +179,10 @@ pub fn export_geojson<P:AsRef<Path>,F:FootprintLike>(footprints:&[F],
     let mut features = Vec::new();
     for fp in footprints.iter() {
 	let t = fp.mean_time();
-	let ts = Utc.timestamp(t.floor() as i64,(t.fract() * 1e9 + 0.5).floor() as u32);
+	let ts = Utc.timestamp_opt(
+	    t.floor() as i64,
+	    (t.fract() * 1e9 + 0.5).floor() as u32)
+	    .unwrap();
 	let tss = ts.to_string();
 
 	let mut gjmpoly : Vec<Vec<Vec<Vec<f64>>>> = Vec::new();

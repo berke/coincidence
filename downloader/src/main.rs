@@ -20,9 +20,9 @@ fn next_month(d:&DateTime<Utc>)->DateTime<Utc> {
     let nd = d.naive_utc().date();
     let mut nd1 = nd;
     while nd1.month() == nd.month() {
-	nd1 = nd1.succ();
+	nd1 = nd1.succ_opt().unwrap();
     }
-    let d1 = nd1.and_hms(0,0,0);
+    let d1 = nd1.and_hms_opt(0,0,0).unwrap();
     DateTime::<Utc>::from_utc(d1,Utc)
 }
 
@@ -72,7 +72,7 @@ async fn process_tropomi(cfg:&config::Tropomi,year:i32,month:u32)->Result<Footpr
 	    }
 	}
 	let mut url = Url::parse(&cfg.base_url)?;
-	let t_start = Utc.ymd(year,month,1).and_hms(0,0,0);
+	let t_start = Utc.with_ymd_and_hms(year,month,1,0,0,0).unwrap();
 	let t_end = next_month(&t_start) - Duration::milliseconds(1);
 	let query = format!("platformname:{} AND producttype:{} AND processingmode:{} AND beginposition:[{} TO {}]",
 			    cfg.platform_name,

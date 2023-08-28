@@ -102,8 +102,14 @@ fn main()->Result<(),Box<dyn Error>> {
 	    if skip {
 		continue;
 	    }
-	    let ts0 = Utc.timestamp(t0.floor() as i64,(t0.fract() * 1e9 + 0.5).floor() as u32);
-	    let ts1 = Utc.timestamp(t1.floor() as i64,(t1.fract() * 1e9 + 0.5).floor() as u32);
+	    let ts0 = Utc.timestamp_opt(
+		t0.floor() as i64,
+		(t0.fract() * 1e9 + 0.5).floor() as u32)
+		.unwrap();
+	    let ts1 = Utc.timestamp_opt(
+		t1.floor() as i64,
+		(t1.fract() * 1e9 + 0.5).floor() as u32)
+		.unwrap();
 	    trace!("Time: {} to {}",ts0,ts1);
 	    trace!("Orbit: {}",fp.orbit);
 	    trace!("Platform: {}",fp.platform);

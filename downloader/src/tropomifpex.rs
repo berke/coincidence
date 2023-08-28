@@ -93,7 +93,12 @@ fn main()->Result<(),Box<dyn Error>> {
 	let times : Array1<i32> = fd.dataset("/PRODUCT/time")?.read_1d()?;
 	info!("Getting scan delta times");
 	let delta_times : Array2<i32> = fd.dataset("/PRODUCT/delta_time")?.read_2d()?;
-	let tropomi_t0 = DateTime::<Utc>::from_utc(NaiveDate::from_ymd(2010,1,1).and_hms(0,0,0),Utc);
+	let tropomi_t0 = DateTime::<Utc>::from_utc(
+	    NaiveDate::from_ymd_opt(2010,1,1)
+		.unwrap()
+		.and_hms_opt(0,0,0)
+		.unwrap(),
+	    Utc);
 
 	let t_exp = 0.538306;
 	// XXX this needs to be fetched from the exposure_time
