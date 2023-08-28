@@ -210,11 +210,13 @@ process() {
 	    cp -l $nc_out $TROPOMI_SAVE/$FILE
 	fi
     fi
+    local mpk_out=$PH2_OUT_DIR/tropomi/mpk/$id.mpk
     local mpk_out_tmp=$work/$id.mpk
     local tropomifpex_log=$work/tropomifpex.log
     if $TROPOMIFPEX $nc_out -o $mpk_out_tmp >$tropomifpex_log 2>&1 ; then
 	msg "Extracted footprints for $id into $mpk_out_tmp"
 	mkdir -p ${mpk_out:h}
+	msg "Moving to $mpk_out"
 	mv $mpk_out_tmp $mpk_out
 	processor_error=0
     else
@@ -463,7 +465,7 @@ main() {
     ids=( $(awk -e 'BEGIN{ FS="\t"} {print $7;print $8}' $INTER | sort -u) )
 
     for id in $ids ; do
-	trace "Considering $id"
+	msg "Considering $id"
 	case $id in
 	    S5P*) do_tropomi;;
 	    IASI*) do_iasi;;

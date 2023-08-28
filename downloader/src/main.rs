@@ -26,6 +26,35 @@ fn next_month(d:&DateTime<Utc>)->DateTime<Utc> {
     DateTime::<Utc>::from_utc(d1,Utc)
 }
 
+async fn robust_get(url:Url)->Result<String,Box<dyn Error>> {
+    let mut t_delay = 1.0;
+    let mut iattempt = 0;
+    loop {
+	iattempt += 1;
+	match reqwest::get(url.clone()).await {
+	    Ok(t) => {
+		match t.text().await {
+		    Ok(resp) => {
+			return Ok(resp)
+		    },
+		    Err(e) => {
+			println!("Could not get text for URL {} ({}), \
+				  trying again... (attempt {})",
+				 url,e,iattempt);
+		    }
+		}
+	    },
+	    Err(e) => {
+		println!("Could not get URL {} ({}), \
+			  trying again... (attempt {})",
+			 url,e,iattempt);
+	    }
+	}
+	std::thread::sleep(std::time::Duration::from_secs_f64(t_delay));
+	t_delay = (2.0 * t_delay).min(600.0);
+    }
+}
+
 async fn process_tropomi(cfg:&config::Tropomi,year:i32,month:u32)->Result<Footprints,Box<dyn Error>> {
     #[derive(Copy,Clone,PartialEq,Eq,Debug)]
     enum State { Init,Entry,Footprint,OrbitNumber,Identifier,TotalResults,ItemsPerPage,BeginPosition,EndPosition }
@@ -57,10 +86,7 @@ async fn process_tropomi(cfg:&config::Tropomi,year:i32,month:u32)->Result<Footpr
 	}
 	url.query_pairs_mut().append_pair("q",&query).append_pair("start",&format!("{}",start_row));
 	println!("Querying URL: {}",url);
-	let resp = reqwest::get(url)
-	    .await?
-	    .text()
-	    .await?;
+	let resp = robust_get(url).await?;
 	// println!("RESP: {:?}",resp);
 	let mut ev = EventReader::from_str(&resp);
 	let mut q = State::Init;
@@ -429,10 +455,7 @@ async fn process_iasi_inner(mut url:Url,
 			    products:&mut Vec<(String,String)>)
 			    ->Result<(),Box<dyn Error>> {
     loop {
-	let resp = reqwest::get(url)
-	    .await?
-	    .text()
-	    .await?;
+	let resp = robust_get(url).await?;
 
 	let obj = json::parse(&resp)?;
 
