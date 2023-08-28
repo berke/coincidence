@@ -4,15 +4,19 @@ mod misc_error;
 mod outline_parser;
 mod minisvg;
 mod footprint;
+mod backoff;
 
 use ron::de::from_reader;
 use misc_error::MiscError;
 use std::error::Error;
 use std::path::PathBuf;
+use std::cell::RefCell;
 use url::Url;
 use xml::reader::{EventReader,XmlEvent};
 use chrono::{Datelike,DateTime,Duration,SecondsFormat,Utc,TimeZone};
 use footprint::{Footprint,Footprints};
+
+use backoff::{Backoff,BackoffParams};
 
 use self::config::Config;
 
@@ -26,8 +30,7 @@ fn next_month(d:&DateTime<Utc>)->DateTime<Utc> {
     DateTime::<Utc>::from_utc(d1,Utc)
 }
 
-async fn robust_get(url:Url)->Result<String,Box<dyn Error>> {
-    let mut t_delay = 1.0;
+async fn robust_get(ctx:&Context,url:Url)->Result<String,Box<dyn Error>> {
     let mut iattempt = 0;
     loop {
 	iattempt += 1;
@@ -35,6 +38,7 @@ async fn robust_get(url:Url)->Result<String,Box<dyn Error>> {
 	    Ok(t) => {
 		match t.text().await {
 		    Ok(resp) => {
+			ctx.backoff.borrow_mut().success();
 			return Ok(resp)
 		    },
 		    Err(e) => {
@@ -50,12 +54,26 @@ async fn robust_get(url:Url)->Result<String,Box<dyn Error>> {
 			 url,e,iattempt);
 	    }
 	}
-	std::thread::sleep(std::time::Duration::from_secs_f64(t_delay));
-	t_delay = (2.0 * t_delay).min(600.0);
+	ctx.backoff.borrow_mut().failure().await;
     }
 }
 
-async fn process_tropomi(cfg:&config::Tropomi,year:i32,month:u32)->Result<Footprints,Box<dyn Error>> {
+struct Context {
+    backoff:RefCell<Backoff>
+}
+
+impl Context {
+    pub fn new()->Self {
+	let backoff = RefCell::new(Backoff::new(BackoffParams::default()));
+	Self {
+	    backoff
+	}
+    }
+}
+
+async fn process_tropomi(ctx:&Context,
+			 cfg:&config::Tropomi,year:i32,month:u32)
+			 ->Result<Footprints,Box<dyn Error>> {
     #[derive(Copy,Clone,PartialEq,Eq,Debug)]
     enum State { Init,Entry,Footprint,OrbitNumber,Identifier,TotalResults,ItemsPerPage,BeginPosition,EndPosition }
 
@@ -86,7 +104,7 @@ async fn process_tropomi(cfg:&config::Tropomi,year:i32,month:u32)->Result<Footpr
 	}
 	url.query_pairs_mut().append_pair("q",&query).append_pair("start",&format!("{}",start_row));
 	println!("Querying URL: {}",url);
-	let resp = robust_get(url).await?;
+	let resp = robust_get(ctx,url).await?;
 	// println!("RESP: {:?}",resp);
 	let mut ev = EventReader::from_str(&resp);
 	let mut q = State::Init;
@@ -397,7 +415,8 @@ async fn get_iasi_footprints(id:&str,url:&str,timeout:f64)
     }
 }
 
-async fn process_iasi(cfg:&config::IASI,year:i32,month:u32)
+async fn process_iasi(ctx:&Context,
+		      cfg:&config::IASI,year:i32,month:u32)
 		      ->Result<Footprints,Box<dyn Error>> {
     // There seems to be an issue with percent-encoding of colons in
     // the collection name
@@ -409,7 +428,7 @@ async fn process_iasi(cfg:&config::IASI,year:i32,month:u32)
     println!("Querying URL: {}",url);
 
     let mut products : Vec<(String,String)> = Vec::new();
-    process_iasi_inner(url,&mut products).await?;
+    process_iasi_inner(ctx,url,&mut products).await?;
 
     println!("Number of products: {}",products.len());
 
@@ -451,11 +470,12 @@ async fn process_iasi(cfg:&config::IASI,year:i32,month:u32)
     Ok(Footprints{ footprints })
 }
 
-async fn process_iasi_inner(mut url:Url,
+async fn process_iasi_inner(ctx:&Context,
+			    mut url:Url,
 			    products:&mut Vec<(String,String)>)
 			    ->Result<(),Box<dyn Error>> {
     loop {
-	let resp = robust_get(url).await?;
+	let resp = robust_get(ctx,url).await?;
 
 	let obj = json::parse(&resp)?;
 
@@ -480,7 +500,7 @@ async fn process_iasi_inner(mut url:Url,
     Ok(())
 }
 
-fn process(cfg:&Config)->Result<(),Box<dyn Error>> {
+fn process(ctx:&Context,cfg:&Config)->Result<(),Box<dyn Error>> {
     use config::{Job,Source};
     
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
@@ -510,8 +530,12 @@ fn process(cfg:&Config)->Result<(),Box<dyn Error>> {
 		} else {
 		    let fps =
 			match s {
-			    Source::Tropomi(trop) => runtime.block_on(process_tropomi(trop,y,m))?,
-			    Source::IASI(iasi) => runtime.block_on(process_iasi(iasi,y,m))?
+			    Source::Tropomi(trop) =>
+				runtime.block_on(
+				    process_tropomi(ctx,trop,y,m))?,
+			    Source::IASI(iasi) =>
+				runtime.block_on(
+				    process_iasi(ctx,iasi,y,m))?
 			};
 
 		    let mut tmp_bin_path = path.clone();
@@ -544,5 +568,6 @@ fn main()->Result<(),Box<dyn Error>> {
     let cfg_fn = MiscError::from_option(std::env::args().nth(1),"Specify path to configuration file")?;
     let fd = std::fs::File::open(cfg_fn)?;
     let cfg : Config = from_reader(fd)?;
-    process(&cfg)
+    let ctx = Context::new();
+    process(&ctx,&cfg)
 }
