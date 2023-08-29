@@ -15,7 +15,7 @@ url = { version = "^2.2" }
 xml-rs = { version = "0.8" }
 nom = { version = "6" }
 json = { version = "^0.11" }
-chrono = { version = "^0.4" }
+chrono = { version = "=0.4.26" }
 serde_json = { version = "^1.0" }
 rmp-serde = { version = "^0.15" }
 #geo = { version = "^0.17" }
