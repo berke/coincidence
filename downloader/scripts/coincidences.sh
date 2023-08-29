@@ -124,8 +124,12 @@ if [ ! -e $OUT/$TARGET/inter.tracwiki ]; then
 	$INTER | sort > $OUT/$TARGET/inter.tracwiki
 fi
 
+#cat <<EOF | parallel --ll --tag --bar --color
 msg "Starting phase 2"
-INTER=$INTER scripts/ph2dl.sh $CONFIG
+cat <<EOF | parallel --ll --tagstr '{#}'
+INTER=$INTER WORKER=1 TROPOMI_ENABLE=1 IASI_ENABLE=0 scripts/ph2dl.sh $CONFIG
+INTER=$INTER WORKER=2 TROPOMI_ENABLE=0 IASI_ENABLE=1 scripts/ph2dl.sh $CONFIG
+EOF
 
 OUT2=$OUT_DIR/ph2
 mkdir -p $OUT2/$TARGET
@@ -237,7 +241,7 @@ NAT_ROOT=$OUT_DIR/iasi/nat out=$OUT2/$TARGET/iasi/mpk-by-pixel \
 # XXXXXXXXX This needs to be done on phase 2 results
 S5P_FOI=$OUT2/$TARGET/s5p-foi.txt
 if [ ! -e $S5P_FOI ]; then
-    msg "Compiling list of S5P footprints of interest"
+    msg "Compiling list of S5P footprints of interest from $OUT2/$TARGET"
     cat $OUT2/$TARGET/inter-??????.txt |
 	cut -f7 -d$'\t' |
 	sed -e 's@^\([^/]*\)/\([0-9]*\)/\([0-9]*\)\t.*$@\1 \2 \3@p' |
@@ -247,6 +251,8 @@ if [ ! -e $S5P_FOI ]; then
 	awk 'BEGIN{prev=-1} { if($1 != prev) { prev=$1;printf("\n%d",prev); } printf(" %d,%d",$2,$3) }' |
 	grep -v '^$' >$S5P_FOI
 fi
+NORB=$(wc -l < $S5P_FOI)
+msg "Total number of S5P orbits of interest: $NORB"
 
 msg "Extracting S5P per-pixel footprints"
 echo "out=$OUT2/$TARGET/tropomi/mpk-by-pixel scripts/tropomi-extr-mpk-by-pixel.sh $CONFIG <$S5P_FOI"
