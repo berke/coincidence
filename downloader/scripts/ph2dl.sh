@@ -184,8 +184,7 @@ process() {
 	    trace "Re-downloading"
 	    bump_cache
 	    while true ; do 
-		if COLUMNS=80 curl \
-		       --progress-bar \
+		if curl \
 		       -u $S5P_AUTH \
 		       --max-time $CURL_MAX_TIME \
 		       --location \
@@ -300,11 +299,11 @@ confirm_eumetsat_api_token() {
 }
 
 try_to_refresh_eumetsat_api_token() {
-    if COLUMNS=80 curl --progress-bar \
-		  -q -f -k -d "grant_type=client_credentials" \
-		  -H "Authorization: Basic $EUMETSAT_API_AUTH" \
-		  --max-time $CURL_MAX_TIME \
-		  https://api.eumetsat.int/token >$WORK_DIR/eumetsat_api.token ; then
+    if curl \
+	   -q -f -k -d "grant_type=client_credentials" \
+	   -H "Authorization: Basic $EUMETSAT_API_AUTH" \
+	   --max-time $CURL_MAX_TIME \
+	   https://api.eumetsat.int/token >$WORK_DIR/eumetsat_api.token ; then
 	EUMETSAT_API_TOKEN=$(sed -ne 's/^.*"access_token":"\([0-9a-z-]\+\)\".*$/\1/p' $WORK_DIR/eumetsat_api.token)
 	EUMETSAT_API_TOKEN_T=$(( $(date +%s) + $(sed -ne 's/^.*"expires_in":\([0-9]\+\).*$/\1/p' $WORK_DIR/eumetsat_api.token)))
 	msg "Got new EUMETSAT API token $EUMETSAT_API_TOKEN valid until $(date -d @$EUMETSAT_API_TOKEN_T)"
@@ -390,18 +389,18 @@ do_iasi() {
 	fi
 
 	if [ $found != 1 ]; then
-	    msg "Re-downloading"
+	    msg "Re-downloading (header goes to $work/header)"
 	    bump_cache
 	    while true ; do
 		check_eumetsat_api_token
-		if COLUMNS=80 curl \
-			      --progress-bar \
-			      --max-time $CURL_MAX_TIME \
-			      --location \
-			      -f \
-			      -k -H "Authorization: Bearer $EUMETSAT_API_TOKEN" \
-			      "$url&access_token=$EUMETSAT_API_TOKEN" \
-			      -o $nat_out_tmp ; then
+		if curl \
+		       --max-time $CURL_MAX_TIME \
+		       --location \
+		       -f \
+		       -k -H "Authorization: Bearer $EUMETSAT_API_TOKEN" \
+		       "$url&access_token=$EUMETSAT_API_TOKEN" \
+		       -D $work/header \
+		       -o $nat_out_tmp ; then
 		    msg "Downloaded"
 		    mv $nat_out_tmp $nat_out
 		    confirm_eumetsat_api_token

@@ -16,6 +16,16 @@ msg() {
     echo "$(date -Iseconds) MSG: $*" >>$LOG_FILE
 }
 
+error() {
+    echo "ERROR: $*"
+    echo "$(date -Iseconds) MSG: $*" >>$LOG_FILE
+}
+
+fail() {
+    error $*
+    exit 1
+}
+
 mkdir -p $WORK_DIR
 
 msg "Creating downloader configuration file"
@@ -126,10 +136,29 @@ fi
 
 #cat <<EOF | parallel --ll --tag --bar --color
 msg "Starting phase 2"
-cat <<EOF | parallel --ll --tagstr '{#}'
-INTER=$INTER WORKER=1 TROPOMI_ENABLE=1 IASI_ENABLE=0 scripts/ph2dl.sh $CONFIG
-INTER=$INTER WORKER=2 TROPOMI_ENABLE=0 IASI_ENABLE=1 scripts/ph2dl.sh $CONFIG
-EOF
+FIFO=$OUT/$TARGET/ph2dl-fifo
+rm -f ${FIFO}1 ${FIFO}2
+mkfifo ${FIFO}1
+mkfifo ${FIFO}2
+chan=CH$$-$RANDOM
+tmux new-window \
+     sh -c "INTER=$INTER WORKER=1 TROPOMI_ENABLE=1 IASI_ENABLE=0 scripts/ph2dl.sh $CONFIG; echo \$? >${FIFO}1" \
+     \; \
+     split-window \
+     sh -c "INTER=$INTER WORKER=2 TROPOMI_ENABLE=0 IASI_ENABLE=1 scripts/ph2dl.sh $CONFIG; echo \$? >${FIFO}2"
+okay=1
+for d in 1 2 ; do
+    read RC <${FIFO}$d
+    if [ $RC = 0 ]; then
+	msg "Downloader $d finished"
+    else
+	error "Downloader $d exited with code $RC"
+	okay=0
+    fi
+done
+if [ $okay = 0 ]; then
+    fail "Some downloads failed"
+fi
 
 OUT2=$OUT_DIR/ph2
 mkdir -p $OUT2/$TARGET
