@@ -126,8 +126,9 @@ impl Footprints {
     }
 
     pub fn export_geojson<P:AsRef<Path>>(&self,
+					 pretty:bool,
 					 path:P)->Result<(),Box<dyn Error>> {
-	export_geojson(&self.footprints,path)
+	export_geojson(&self.footprints,pretty,path)
     }
 }
 
@@ -171,59 +172,65 @@ pub fn dump_to_file<P:AsRef<Path>>(footprints:&[Footprint],
     Ok(())
 }
 
-pub fn export_geojson<P:AsRef<Path>,F:FootprintLike>(footprints:&[F],
-				     path:P)->Result<(),Box<dyn Error>> {
-    let fd = File::create(path)?;
-    let mut buf = BufWriter::new(fd);
+pub fn export_geojson<P:AsRef<Path>,F:FootprintLike>(
+    footprints:&[F],
+    pretty:bool,
+    path:P)->Result<(),Box<dyn Error>> {
+	let fd = File::create(path)?;
+	let mut buf = BufWriter::new(fd);
 
-    let mut features = Vec::new();
-    for fp in footprints.iter() {
-	let t = fp.mean_time();
-	let ts = Utc.timestamp_opt(
-	    t.floor() as i64,
-	    (t.fract() * 1e9 + 0.5).floor() as u32)
-	    .unwrap();
-	let tss = ts.to_string();
+	let mut features = Vec::new();
+	for fp in footprints.iter() {
+	    let t = fp.mean_time();
+	    let ts = Utc.timestamp_opt(
+		t.floor() as i64,
+		(t.fract() * 1e9 + 0.5).floor() as u32)
+		.unwrap();
+	    let tss = ts.to_string();
 
-	let mut gjmpoly : Vec<Vec<Vec<Vec<f64>>>> = Vec::new();
-	for poly in fp.outline().iter() {
-	    let mut gjpoly : Vec<Vec<Vec<f64>>> = Vec::new();
-	    for ring in poly.iter() {
-		let gjring : Vec<Vec<f64>> = 
-		    ring
-		    .iter()
-		    .map(|&(x,y)| vec![x,y])
-		    .collect();
-		gjpoly.push(gjring);
+	    let mut gjmpoly : Vec<Vec<Vec<Vec<f64>>>> = Vec::new();
+	    for poly in fp.outline().iter() {
+		let mut gjpoly : Vec<Vec<Vec<f64>>> = Vec::new();
+		for ring in poly.iter() {
+		    let gjring : Vec<Vec<f64>> = 
+			ring
+			.iter()
+			.map(|&(x,y)| vec![x,y])
+			.collect();
+		    gjpoly.push(gjring);
+		}
+		gjmpoly.push(gjpoly);
 	    }
-	    gjmpoly.push(gjpoly);
-	}
 
-	let properties = {
-	    let mut props = fp.properties();
-	    props.insert(
-		String::from("time"),
-		to_value(tss.to_string()).unwrap());
-	    props.insert(
-		String::from("id"),
-		to_value(&fp.id()).unwrap());
-	    Some(props)
-	};
-	let geo = Geometry::new(Value::MultiPolygon(gjmpoly));
-	let feature = Feature {
+	    let properties = {
+		let mut props = fp.properties();
+		props.insert(
+		    String::from("time"),
+		    to_value(tss.to_string()).unwrap());
+		props.insert(
+		    String::from("id"),
+		    to_value(&fp.id()).unwrap());
+		Some(props)
+	    };
+	    let geo = Geometry::new(Value::MultiPolygon(gjmpoly));
+	    let feature = Feature {
+		bbox:None,
+		geometry:Some(geo),
+		id:None,
+		properties,
+		foreign_members:None
+	    };
+	    features.push(feature);
+	}
+	let fc = FeatureCollection {
 	    bbox:None,
-	    geometry:Some(geo),
-	    id:None,
-	    properties,
+	    features,
 	    foreign_members:None
 	};
-	features.push(feature);
+	if pretty {
+	    serde_json::ser::to_writer_pretty(&mut buf,&fc)?;
+	} else {
+	    serde_json::ser::to_writer(&mut buf,&fc)?;
+	}
+	Ok(())
     }
-    let fc = FeatureCollection {
-	bbox:None,
-	features,
-	foreign_members:None
-    };
-    serde_json::ser::to_writer(&mut buf,&fc)?;
-    Ok(())
-}

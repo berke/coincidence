@@ -28,6 +28,7 @@ fn main()->Result<(),Box<dyn Error>> {
 	.arg(Arg::with_name("spc").short("s").long("spc").value_name("PATH").takes_value(true).required(true))
 	.arg(Arg::with_name("iasifpdir").long("iasifpdir").value_name("PATH").takes_value(true).required(true))
 	.arg(Arg::with_name("limit").long("limit").value_name("N").takes_value(true).required(false))
+	.arg(Arg::with_name("pretty").short("p").help("Pretty-print JSON output"))
 	.get_matches();
 
     let out_base = args.value_of("out").expect("Specify output base");
@@ -35,6 +36,7 @@ fn main()->Result<(),Box<dyn Error>> {
     let spc_dir = args.value_of("spc").expect("Specify spectrum directory");
     let iasi_fp_dir = args.value_of("iasifpdir").expect("Specify IASI footprint directory");
     let limit = args.value_of("limit").map(|x| x.parse::<usize>().expect("Invalid count"));
+    let pretty = args.is_present("pretty");
     
     let iasi_ret_re = regex::Regex::new(r"^(IASI_xxx_.*)-(\d+)-(\d+)-(\d+)-ret.h5$")?;
 
@@ -247,7 +249,7 @@ fn main()->Result<(),Box<dyn Error>> {
 
     let geojson_fn = format!("{}-footprints.geojson",out_base);
     info!("Exporting GeoJSON to {:?}",geojson_fn);
-    footprint::export_geojson(&footprints,&geojson_fn)?;
+    footprint::export_geojson(&footprints,pretty,&geojson_fn)?;
 
     let fancy_fn = format!("{}-ffp.mpk",out_base);
     info!("Exporting fancy footprints to to {:?}",fancy_fn);

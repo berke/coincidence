@@ -160,7 +160,7 @@ fn main()->Result<(),Box<dyn Error>> {
 	if let Some(f1_mp) = clip_to_roi(&roi,&f1_mp0) {
 	    let f1_mp_area = f1_mp.unsigned_area();
 	    if f1_mp_area >= omega_min*f1_area {
-		fps_in_roi1.push((i1,f1_mp,f1_area));
+		fps_in_roi1.push((i1,f1_mp,f1_mp_area));
 		continue;
 	    }
 	} else {
@@ -181,7 +181,7 @@ fn main()->Result<(),Box<dyn Error>> {
 	if let Some(f2_mp) = clip_to_roi(&roi,&f2_mp0) {
 	    let f2_mp_area = f2_mp.unsigned_area();
 	    if f2_mp_area >= omega_min*f2_area {
-		fps_in_roi2.push((i2,f2_mp,f2_area));
+		fps_in_roi2.push((i2,f2_mp,f2_mp_area));
 		continue;
 	    }
 	} else {
@@ -209,9 +209,9 @@ fn main()->Result<(),Box<dyn Error>> {
     let mut n_psi_too_low = 0;
     let mut n_no_intersection = 0;
 
-    for &(i1,ref f1_mp,f1_area) in fps_in_roi1.iter() {
+    for &(i1,ref f1_mp,f1_mp_area) in fps_in_roi1.iter() {
 	let f1 = &fps1.footprints[i1];
-	for &(i2,ref f2_mp,f2_area) in fps_in_roi2.iter() {
+	for &(i2,ref f2_mp,f2_mp_area) in fps_in_roi2.iter() {
 	    let f2 = &fps2.footprints[i2];
 
 	    n_pairs_tested += 1;
@@ -238,7 +238,7 @@ fn main()->Result<(),Box<dyn Error>> {
 		    };
 		if tau >= tau_min {
 		    if let Some((area,inter_mp)) = check_intersection(f1_mp,f2_mp) {
-			let psi = area / f1_area.min(f2_area);
+			let psi = area / f1_mp_area.min(f2_mp_area);
 			if psi >= psi_min {
 			    let t0 = f1.time_interval.0.min(f2.time_interval.0);
 			    let t1 = f1.time_interval.1.max(f2.time_interval.1);

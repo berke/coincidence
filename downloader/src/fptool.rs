@@ -50,13 +50,21 @@ fn main()->Result<(),Box<dyn Error>> {
 	.arg(Arg::with_name("export").short("e").takes_value(true))
 	.arg(Arg::with_name("dump").short("D").takes_value(true))
 	.arg(Arg::with_name("verbose").short("v"))
-	.arg(Arg::with_name("t_min").long("t-min").help("Start of time range").takes_value(true))
-	.arg(Arg::with_name("t_max").long("t-max").help("End of time range").takes_value(true))
-	.arg(Arg::with_name("decimate").long("decimate").help("Keep only every Nth footprint")
+	.arg(Arg::with_name("pretty").short("p")
+	     .help("Pretty-print JSON output"))
+	.arg(Arg::with_name("t_min").long("t-min")
+	     .help("Start of time range")
+	     .takes_value(true))
+	.arg(Arg::with_name("t_max").long("t-max")
+	     .help("End of time range")
+	     .takes_value(true))
+	.arg(Arg::with_name("decimate").long("decimate")
+	     .help("Keep only every Nth footprint")
 	     .default_value("1").takes_value(true))
 	.get_matches();
 
     let verbose = args.is_present("verbose");
+    let pretty = args.is_present("pretty");
 
     simple_logger::SimpleLogger::new()
 	.with_level(if verbose { log::LevelFilter::Trace } else { log::LevelFilter::Info })
@@ -147,7 +155,7 @@ fn main()->Result<(),Box<dyn Error>> {
     }
 
     if let Some(export_fn) = args.value_of("export") {
-	fps.export_geojson(export_fn)?;
+	fps.export_geojson(pretty,export_fn)?;
     }
 
     Ok(())
