@@ -1,8 +1,6 @@
 #![allow(dead_code)]
 
 mod misc_error;
-mod minisvg;
-mod footprint;
 mod poly_utils;
 
 use std::error::Error;

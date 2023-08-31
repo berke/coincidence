@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::{BufReader,BufWriter};
 use serde::{Serialize,Deserialize};
 use serde_json::{Map,to_value};
-use crate::footprint::{Footprint,FootprintLike};
+use footprint::{Footprint,FootprintLike};
 
 #[derive(Debug,Clone,Serialize,Deserialize)]
 pub struct FancyFootprint {

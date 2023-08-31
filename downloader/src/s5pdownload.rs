@@ -1,7 +1,5 @@
 #![allow(dead_code)]
 mod misc_error;
-mod footprint;
-mod minisvg;
 
 use std::error::Error;
 use std::fs::File;

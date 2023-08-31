@@ -2,8 +2,6 @@
 
 mod misc_error;
 mod outline_parser;
-mod minisvg;
-mod footprint;
 mod backoff;
 
 use ron::de::from_reader;
