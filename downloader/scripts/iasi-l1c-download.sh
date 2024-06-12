@@ -9,6 +9,8 @@ fi
 
 source $1
 
+HEADER_ONLY=${HEADER_ONLY:-0}
+
 num_errors=0
 
 fail() {
@@ -100,6 +102,13 @@ check_eumetsat_api_token() {
     fi
 }
 
+delay_min=2.0
+delay_max=30
+delay_alpha=1.25
+delay_pause=30
+#delay=$delay_min
+delay=4.8828125
+
 do_iasi() {
     local work=$WORK_DIR/$id
     
@@ -108,31 +117,57 @@ do_iasi() {
 
     local url="$EUMETSAT_BASE/$id/entry?name=$id.nat"
 
-    msg "Need NAT file from $url"
+    trace "Need NAT file from $url"
 
     local nat_out=$IASI_SAVE/$id
     local nat_out_tmp=$IASI_SAVE/$id.tmp
+    local curl_stderr=$work/.curl_stderr
     if [ -e $nat_out ]; then
 	trace "File already downloaded as $nat_out"
     else
 	trace "Re-downloading"
 	while true ; do
+	    msg "Sleeping for $delay"
+	    sleep $delay
+
 	    check_eumetsat_api_token
-	    if curl \
-		   --max-time $CURL_MAX_TIME \
-		   --location \
-		   -f \
-		   -k -H "Authorization: Bearer $EUMETSAT_API_TOKEN" \
-		   "$url&access_token=$EUMETSAT_API_TOKEN" \
-		   -o $nat_out_tmp ; then
-		msg "Downloaded"
+	    local curl_cmd=(
+		curl
+		   --max-time $CURL_MAX_TIME
+		   --location
+		   --tr-encoding
+		   -f
+		   -k -H "Authorization: Bearer $EUMETSAT_API_TOKEN"
+		   "$url"
+	    )
+	    if (( HEADER_ONLY )) ; then
+		$curl_cmd 2>$curl_stderr | head -c 4096 >$nat_out_tmp
+	    else
+		$curl_cmd 2>$curl_stderr -o $nat_out_tmp
+	    fi
+
+	    if [ $? = 0 ] && [ -s $nat_out_tmp ] ; then
+		msg "Downloaded $id"
+		   # "$url&access_token=$EUMETSAT_API_TOKEN" \
 		mv $nat_out_tmp $nat_out
 		confirm_eumetsat_api_token
 		break
 	    else
+		rm -f $nat_out_tmp
+
 		error "Could not download $url, RC $?"
-		sleep 5
-		drop_eumetsat_api_token
+		if grep -q '^curl:.*error: 429' $curl_stderr ; then
+		    msg "Being rate limited"
+		    sleep $delay_pause
+		    (( delay=delay_alpha*delay ))
+		    if (( delay > delay_max )) ; then
+			delay=$delay_max
+		    fi
+		else
+		    msg "Dropping token"
+		    drop_eumetsat_api_token
+		    sleep $delay_pause
+		fi
 	    fi
 	done
     fi
