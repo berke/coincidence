@@ -7,8 +7,10 @@ mod backoff;
 use ron::de::from_reader;
 use misc_error::MiscError;
 use std::error::Error;
-use std::path::PathBuf;
+use std::path::{Path,PathBuf};
 use std::cell::RefCell;
+use std::fs::File;
+use std::io::Write;
 use url::Url;
 use xml::reader::{EventReader,XmlEvent};
 use chrono::{Datelike,DateTime,Duration,SecondsFormat,Utc,TimeZone};
@@ -414,7 +416,8 @@ async fn get_iasi_footprints(id:&str,url:&str,timeout:f64)
 }
 
 async fn process_iasi(ctx:&Context,
-		      cfg:&config::IASI,year:i32,month:u32)
+		      cfg:&config::IASI,year:i32,month:u32,
+		      path:&Path)
 		      ->Result<Footprints,Box<dyn Error>> {
     // There seems to be an issue with percent-encoding of colons in
     // the collection name
@@ -429,6 +432,14 @@ async fn process_iasi(ctx:&Context,
     process_iasi_inner(ctx,url,&mut products).await?;
 
     println!("Number of products: {}",products.len());
+    {
+	let mut pb = PathBuf::from(path);
+	pb.push("products.txt");
+	let mut fd = File::create(&pb)?;
+	for (id,_) in &products {
+	    writeln!(&mut fd,"{}",id)?;
+	}
+    }
 
     let mut footprints = Vec::new();
 
@@ -533,7 +544,7 @@ fn process(ctx:&Context,cfg:&Config)->Result<(),Box<dyn Error>> {
 				    process_tropomi(ctx,trop,y,m))?,
 			    Source::IASI(iasi) =>
 				runtime.block_on(
-				    process_iasi(ctx,iasi,y,m))?
+				    process_iasi(ctx,iasi,y,m,&path))?
 			};
 
 		    let mut tmp_bin_path = path.clone();
