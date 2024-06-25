@@ -105,7 +105,7 @@ module mod_l1c_l2_reading
    type RECORD_ID
       integer(kind=1) :: cl      ! Class
       integer(kind=1) :: scl     ! Subclass
-      integer(kind=8) :: pos     ! Position
+      integer(kind=4) :: pos     ! Position
    end type
 
    type RECORD_GIADR_SCALE_FACTORS
@@ -996,8 +996,7 @@ contains
       type(RECORD_ID)   , intent(out)                 :: recv(MAX_RECORDS)
       type(RECORD_GIADR_ENGINEERING), intent(out)     :: giadr_l1eng
       ! internal variables
-      integer(kind=4)                                 :: uin
-      integer(kind=8)                                 :: fsize, fpos
+      integer(kind=4)                                 :: fsize, fpos, uin
       type(RECORD_HEADER)                             :: grh
 
 100 format("line: ",I4,", pos: ", I10,", class:",I3, ", subclass:",I3, ", version:",I3, ", size: ",I10)
@@ -1050,8 +1049,7 @@ contains
    subroutine read_mdr_l1eng(uin, line_pos, l1eng)
       implicit none
       ! Arguments
-      integer(kind=4), intent(in)                    :: uin
-      integer(kind=8), intent(in)                    :: line_pos
+      integer(kind=4), intent(in)                    :: uin, line_pos
       type(RECORD_MDR_ENGINEERING), intent(out)      :: l1eng
       ! internal variables
       integer(kind=4)                                :: i, j, k, l, m, n, LL
@@ -1551,8 +1549,7 @@ contains
       integer(kind=4)   , intent(out)                 :: nrecs
       type(RECORD_ID)   , intent(out)                 :: recs(MAX_RECORDS)
       ! internal variables
-      integer(kind=4)                                 :: uin
-      integer(kind=8)                                 :: fsize, fpos
+      integer(kind=4)                                 :: fsize, fpos, uin
       type(RECORD_HEADER)                             :: grh
 
 100 format("line: ",I4,", pos: ", I10,", class:",I3, ", subclass:",I3, ", version:",I3, ", size: ",I10)
@@ -1591,12 +1588,11 @@ contains
    subroutine read_mdr_l1ver(uin, line_pos, l1ver)
       implicit none
       ! Arguments
-      integer(kind=4), intent(in)                    :: uin
-      integer(kind=8), intent(in)                    :: line_pos
+      integer(kind=4), intent(in)                    :: uin, line_pos
       type(RECORD_MDR_VERIFICATION), intent(out)     :: l1ver
       ! internal variables
       integer(kind=4)                                :: i, j, k, l, m, n, LL
-      integer(kind=8)                                :: offset
+      integer(kind=4)                                :: offset
       integer(kind=4)                                :: offset_AP_AIF
       integer(kind=4)                                :: offset_AP_ADF
       integer(kind=4)                                :: offset_VPA_A
@@ -2308,8 +2304,7 @@ contains
    subroutine read_viadr_l1eng(uin, line_pos, l1eng)
       implicit none
       ! Arguments
-      integer(kind=4), intent(in)                    :: uin
-      integer(kind=8), intent(in)                    :: line_pos
+      integer(kind=4), intent(in)                    :: uin, line_pos
       type(RECORD_VIADR_ENGINEERING), intent(out)    :: l1eng
       ! internal variables
 
@@ -2319,8 +2314,7 @@ contains
    subroutine read_giadr_l1eng(uin, line_pos, l1eng)
       implicit none
       ! Arguments
-      integer(kind=4), intent(in)                    :: uin
-      integer(kind=8), intent(in)                    :: line_pos
+      integer(kind=4), intent(in)                    :: uin, line_pos
       type(RECORD_GIADR_ENGINEERING), intent(out)    :: l1eng
       ! internal variables
      
@@ -2512,7 +2506,7 @@ contains
       type(L1C_GRANULE)     , intent(inout)            :: granule
       ! Internal variables
       integer(kind=4)                                  :: uin 
-      integer(kind=8)                                  :: fpos
+      integer(kind=4)                                  :: fpos
       type(RECORD_GIADR_SCALE_FACTORS)                 :: giadr_sf
       type(RECORD_GIADR_QUALITY)                       :: giadr_quality
       type(RECORD_ID)                                  :: recs(MAX_RECORDS)
@@ -2559,15 +2553,13 @@ contains
       type(RECORD_GIADR_SCALE_FACTORS), intent(out)   :: giadr_sf
       type(RECORD_GIADR_QUALITY), intent(out)         :: giadr_quality
       ! internal variables
-      integer(kind=8)                                 :: fsize, fpos
-      integer(kind=4)                                 :: uin
+      integer(kind=4)                                 :: fsize, fpos, uin
       type(RECORD_HEADER)                             :: grh
       integer(kind=4)                                 :: i, j
 
 100 format("line: ",I4,", pos: ", I10,", class:",I3, ", subclass:",I3, ", version:",I3, ", size: ",I10)
 
       inquire(file=fname, size=fsize)
-      write(0,*)"fsize: ", fsize
       uin = getFileUnit()
       ! Open file
       open(unit=uin, file=fname, access='stream', status='old',&
@@ -2612,8 +2604,7 @@ contains
    subroutine read_iasi_mdr_l1c(uin, line_pos, giadr_sf, l1c)
       implicit none
       ! Arguments
-      integer(kind=4), intent(in)                  :: uin
-      integer(kind=8), intent(in)                  :: line_pos
+      integer(kind=4), intent(in)                  :: uin, line_pos
       type(RECORD_GIADR_SCALE_FACTORS), intent(in) :: giadr_sf
       type(RECORD_MDR_L1C), intent(out)            :: l1c
       ! internal variables
@@ -2634,32 +2625,6 @@ contains
 
       return
    end subroutine read_iasi_mdr_l1c
-
-   subroutine read_iasi_mdr_l1c_reduced(uin, line_pos, giadr_sf, l1c)
-      implicit none
-      ! Arguments
-      integer(kind=4), intent(in)                  :: uin
-      integer(kind=8), intent(in)                  :: line_pos
-      type(RECORD_GIADR_SCALE_FACTORS), intent(in) :: giadr_sf
-      type(RECORD_MDR_L1C), intent(out)            :: l1c
-      ! internal variables
-     
-      ! call l1c_getIasiMode(uin, line_pos, l1c%GEPSIasiMode)
-      ! call l1c_getSP(uin, line_pos, l1c%GEPS_SP)
-      ! call l1c_getCCD(uin, line_pos, l1c%GEPS_CCD)
-      call l1c_getLongLat(uin, line_pos, l1c%lon, l1c%lat) ! yes
-      call l1c_getDatIASI(uin, line_pos, l1c%cds_date) ! yes
-      ! call l1c_getFlagQual_3(uin, line_pos, l1c%flg)
-      ! call l1c_getMetopAngles(uin, line_pos, l1c%iza, l1c%iaa)
-      ! call l1c_getSunAngles(uin, line_pos, l1c%sza, l1c%saa)
-      call l1c_getEUMAvhrr(uin, line_pos, l1c%clc, l1c%lfr, l1c%sif)
-      ! call l1c_getRadiances(uin, line_pos, giadr_sf, l1c%rad, &
-      !                            l1c%dWn, l1c%NsFirst, l1c%NsLast )
-      ! call l1c_getRadAnal(uin, line_pos, l1c%radanal)
-      ! call l1c_getIISLoc(uin, line_pos, l1c%IISlon, l1c%IISlat)
-
-      return
-   end subroutine read_iasi_mdr_l1c_reduced
 
    ! subroutine read_iasi_l2_file( fname, granule )
    !    implicit none
@@ -2704,8 +2669,7 @@ contains
       type(RECORD_ID)        , intent(out)              :: recs(MAX_RECORDS)
       type(RECORD_GIADR_L2)  , intent(out)              :: giadr_l2
       ! internal variables
-      integer(kind=4)                                   :: uin
-      integer(kind=8)                                   :: fsize, fpos
+      integer(kind=4)                                   :: fsize, fpos, uin
       type(RECORD_HEADER)                               :: grh
       integer(kind=4)                                   :: i, j
 
@@ -2802,8 +2766,7 @@ contains
       type(RECORD_GIADR_RADIANCE),intent(out)              :: giadr_radiance
       type(RECORD_GIADR_ANALOG)  ,intent(out)              :: giadr_analog
       ! internal variables
-      integer(kind=4)                                   :: uin
-      integer(kind=8)                                   :: fsize, fpos
+      integer(kind=4)                                   :: fsize, fpos, uin
       type(RECORD_HEADER)                               :: grh
       integer(kind=4)                                   :: i, j
 
@@ -2852,12 +2815,11 @@ contains
    subroutine read_avhrr_l1b_mdr(uin, line_pos, mdr)
       implicit none
       ! Arguments
-      integer(kind=4), intent(in)                  :: uin
-      integer(kind=8), intent(in)                  :: line_pos
+      integer(kind=4), intent(in)                  :: uin, line_pos
       type(RECORD_MDR_AVHRR_1B_FULL), intent(out)  :: mdr
       ! internal variables
       type(RECORD_HEADER)                          :: grh
-      integer(kind=8)                              :: offset
+      integer(kind=4)                              :: offset
       integer(kind=4)                              :: i, j
       integer(kind=2)                              :: val2
       integer(kind=2), dimension(NE*5)             :: values
@@ -2971,8 +2933,7 @@ contains
 
    subroutine read_giadr_radiance(uin, fpos, giadr_radiance)
       implicit none
-      integer(kind=4)                                      :: uin, offset
-      integer(kind=8)                                      :: fpos
+      integer(kind=4)                                      :: fpos, uin, offset
       type(RECORD_GIADR_RADIANCE),intent(out)              :: giadr_radiance
       integer(kind=2)                                      :: val2
       integer(kind=4)                                      :: val4
@@ -3041,16 +3002,14 @@ contains
 
    subroutine read_giadr_analog(uin, fpos, giadr_analog)
       implicit none
-      integer(kind=4)                                      :: uin
-      integer(kind=8)                                      :: fpos
+      integer(kind=4)                                      :: fpos, uin
       type(RECORD_GIADR_ANALOG)  ,intent(out)              :: giadr_analog
       return
    end subroutine read_giadr_analog
 
    subroutine read_grh(uin, fpos, grh)
       implicit none
-      integer(kind=4)                 , intent(in)  :: uin
-      integer(kind=8)                 , intent(in)  :: fpos
+      integer(kind=4)      , intent(in)  :: uin, fpos
       type(RECORD_HEADER)  , intent(out) :: grh
       read(unit=uin, pos=fpos) grh%RECORD_CLASS, grh%INSTRUMENT_GROUP, &
            grh%RECORD_SUBCLASS, grh%RECORD_SUBCLASS_VERSION,           &
@@ -3078,7 +3037,7 @@ contains
       implicit none
       ! Arguments
       integer(kind=4)      , intent(in)       :: uin
-      integer(kind=8)      , intent(in)       :: fpos
+      integer(kind=4)      , intent(in)       :: fpos
       type(RECORD_MDR_L2), intent(out)        :: mdr_l2
       ! internal variables
       type(RECORD_HEADER)                     :: grh
@@ -3260,8 +3219,7 @@ contains
 
    subroutine read_giadr_scale_factors(uin, fpos, giadr_sf)
       implicit none
-      integer(kind=4)                 , intent(in)  :: uin
-      integer(kind=8)                 , intent(in)  :: fpos
+      integer(kind=4)                 , intent(in)  :: uin, fpos
       type(RECORD_GIADR_SCALE_FACTORS), intent(out) :: giadr_sf
       read(unit=uin, pos=fpos+20) giadr_sf 
       return
@@ -3269,8 +3227,7 @@ contains
 
    subroutine read_giadr_quality(uin, fpos, giadr_quality)
       implicit none
-      integer(kind=4)             , intent(in)  :: uin
-      integer(kind=8)             , intent(in)  :: fpos
+      integer(kind=4)             , intent(in)  :: uin, fpos
       type(RECORD_GIADR_QUALITY)  , intent(out) :: giadr_quality
       integer(kind=4)                           :: i, j, k
       integer(kind=4)                           :: i4value
@@ -3391,7 +3348,7 @@ contains
    subroutine read_giadr_l2(uin, fpos, giadr_l2)
       implicit none
       integer(kind=4)        , intent(in)       :: uin
-      integer(kind=8)        , intent(in)       :: fpos
+      integer(kind=4)        , intent(in)       :: fpos
       type(RECORD_GIADR_L2)  , intent(out)      :: giadr_l2
       integer(kind=1)                           :: i1value
       integer(kind=4)                           :: i4value
@@ -3465,10 +3422,9 @@ contains
 
    subroutine l1c_getDatIASI(uin, linePos, date_iasi)
       implicit none
-      integer(kind=4), intent(in)  :: uin
-      integer(kind=8), intent(in)  :: linePos
+      integer(kind=4)     , intent(in)       :: uin, linePos
       type(SHORT_CDS_TIME), dimension(SNOT)  :: date_iasi
-      integer(kind=8)                        :: offset
+      integer(kind=4)                        :: offset
       offset = linePos + 9122
       read(unit=uin, pos=offset) date_iasi
       return   
@@ -3477,8 +3433,7 @@ contains
    subroutine l1c_getRadAnal(uin, linePos, radanal)
       implicit none
       ! Arguments
-      integer(kind=4), intent(in)  :: uin
-      integer(kind=8), intent(in)  :: linePos
+      integer(kind=4), intent(in) :: uin, linePos
       type(AVHRR_RAD_ANAL)        :: radanal
       ! Internal variables
       type(VINTEGER4)             :: values(NBK*NCL*PN*SNOT)
@@ -3531,10 +3486,9 @@ contains
 
    subroutine l1c_getLongLat(uin, linePos, lon, lat)
       implicit none
-      integer(kind=4), intent(in)  :: uin
-      integer(kind=8), intent(in)  :: linePos
+      integer(kind=4), intent(in)           :: uin, linePos
       real(kind=4)   , dimension(PN,SNOT)   :: lon, lat
-      integer(kind=8)                       :: offset
+      integer(kind=4)                       :: offset
       integer(kind=4), dimension(2*PN*SNOT) :: values
       integer(kind=4)                       :: i, j, k
       offset = linePos + 255893
@@ -3551,8 +3505,7 @@ contains
 
    subroutine l1c_getIISLoc(uin, linePos, IISlon, IISlat)
       implicit none
-      integer(kind=4), intent(in)  :: uin
-      integer(kind=8), intent(in)  :: linePos
+      integer(kind=4), intent(in)            :: uin, linePos
       real(kind=4)   , dimension(SGI,SNOT)   :: IISlon, IISlat
       integer(kind=4), dimension(2*SGI*SNOT) :: values
       integer(kind=4)                        :: i, j, k
@@ -3569,10 +3522,9 @@ contains
 
    subroutine l1c_getMetopAngles(uin, linePos, zen, azi)
       implicit none
-      integer(kind=4), intent(in)  :: uin
-      integer(kind=8), intent(in)  :: linePos
+      integer(kind=4), intent(in)           :: uin, linePos
       real(kind=4), dimension(PN,SNOT)      :: zen, azi
-      integer(kind=8)                       :: offset
+      integer(kind=4)                       :: offset
       integer(kind=4), dimension(2*PN*SNOT) :: values
       integer(kind=4)                       :: i, j, k
       offset = linePos + 256853
@@ -3589,10 +3541,9 @@ contains
 
    subroutine l1c_getSunAngles(uin, linePos, zen, azi)
       implicit none
-      integer(kind=4), intent(in)  :: uin
-      integer(kind=8), intent(in)  :: linePos
+      integer(kind=4), intent(in)           :: uin, linePos
       real(kind=4)   , dimension(PN,SNOT)   :: zen, azi
-      integer(kind=8)                       :: offset
+      integer(kind=4)                       :: offset
       integer(kind=4), dimension(2*PN*SNOT) :: values
       integer(kind=4)                       :: i, j, k
       offset = linePos + 263813
@@ -3609,10 +3560,9 @@ contains
 
    subroutine l1c_getEUMAvhrr(uin, linePos, clc, lfr, sif)
       implicit none
-      integer(kind=4), intent(in)  :: uin
-      integer(kind=8), intent(in)  :: linePos
+      integer(kind=4), intent(in)           :: uin, linePos
       integer(kind=1), dimension(PN,SNOT)   :: clc, lfr, sif
-      integer(kind=8)                       :: offset
+      integer(kind=4)                       :: offset
       integer(kind=1), dimension(3*PN*SNOT) :: values
       offset = linePos + 2728548
       read(unit=uin, pos=offset) values
@@ -3626,15 +3576,14 @@ contains
                                 dWn, NsFirst, NsLast )
       implicit none
       ! Arguments
-      integer(kind=4), intent(in)  :: uin
-      integer(kind=8), intent(in)  :: linePos
+      integer(kind=4)                 , intent(in)   :: uin, linePos
       type(RECORD_GIADR_SCALE_FACTORS), intent(in)   :: giadr_sf
       real(kind=4)  ,dimension(:,:,:) , intent(inout):: rad
       real(kind=4)                    , intent(out)  :: dWn
       integer(kind=4)                 , intent(out)  :: NsFirst
       integer(kind=4)                 , intent(out)  :: NsLast
       ! Internal 
-      integer(kind=8)                                :: offset
+      integer(kind=4)                                :: offset
       type(VINTEGER4)                                :: vi4value
       integer(kind=4)                                :: i4value
       integer(kind=2), dimension(:)    ,allocatable  :: values
@@ -3683,8 +3632,7 @@ contains
 
    subroutine l1c_getFlagQual_3(uin, linePos, flg)
       implicit none
-      integer(kind=4), intent(in)  :: uin
-      integer(kind=8), intent(in)  :: linePos
+      integer(kind=4), intent(in)  :: uin, linePos
       integer(kind=1), intent(out) :: flg(SB,PN,SNOT)
       
       read(uin, pos=linepos+255260) flg
@@ -3694,8 +3642,7 @@ contains
 
    subroutine l1c_getIasiMode(uin, linePos, GEPSIasiMode)
       implicit none
-      integer(kind=4), intent(in)  :: uin
-      integer(kind=8), intent(in)  :: linePos
+      integer(kind=4), intent(in)  :: uin, linePos
       integer(kind=2)              :: vali2_a
       integer(kind=2)              :: vali2_b
       real(kind=4)                 :: valr4
@@ -3711,8 +3658,7 @@ contains
 
    subroutine l1c_getSP(uin, linePos, GEPS_SP)
       implicit none
-      integer(kind=4), intent(in)  :: uin
-      integer(kind=8), intent(in)  :: linePos
+      integer(kind=4), intent(in)  :: uin, linePos
       integer(kind=4), intent(out) :: GEPS_SP(SNOT)
       
       read(uin, pos=linepos+9380) GEPS_SP
@@ -3722,8 +3668,7 @@ contains
 
    subroutine l1c_getCCD(uin, linePos, GEPS_CCD)
       implicit none
-      integer(kind=4), intent(in)  :: uin
-      integer(kind=8), intent(in)  :: linePos
+      integer(kind=4), intent(in)  :: uin, linePos
       integer(kind=1), intent(out) :: GEPS_CCD(SNOT)
       
       read(uin, pos=linepos+9350) GEPS_CCD

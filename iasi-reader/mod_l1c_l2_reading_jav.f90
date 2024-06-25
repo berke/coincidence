@@ -2635,32 +2635,6 @@ contains
       return
    end subroutine read_iasi_mdr_l1c
 
-   subroutine read_iasi_mdr_l1c_reduced(uin, line_pos, giadr_sf, l1c)
-      implicit none
-      ! Arguments
-      integer(kind=4), intent(in)                  :: uin
-      integer(kind=8), intent(in)                  :: line_pos
-      type(RECORD_GIADR_SCALE_FACTORS), intent(in) :: giadr_sf
-      type(RECORD_MDR_L1C), intent(out)            :: l1c
-      ! internal variables
-     
-      ! call l1c_getIasiMode(uin, line_pos, l1c%GEPSIasiMode)
-      ! call l1c_getSP(uin, line_pos, l1c%GEPS_SP)
-      ! call l1c_getCCD(uin, line_pos, l1c%GEPS_CCD)
-      call l1c_getLongLat(uin, line_pos, l1c%lon, l1c%lat) ! yes
-      call l1c_getDatIASI(uin, line_pos, l1c%cds_date) ! yes
-      ! call l1c_getFlagQual_3(uin, line_pos, l1c%flg)
-      ! call l1c_getMetopAngles(uin, line_pos, l1c%iza, l1c%iaa)
-      ! call l1c_getSunAngles(uin, line_pos, l1c%sza, l1c%saa)
-      call l1c_getEUMAvhrr(uin, line_pos, l1c%clc, l1c%lfr, l1c%sif)
-      ! call l1c_getRadiances(uin, line_pos, giadr_sf, l1c%rad, &
-      !                            l1c%dWn, l1c%NsFirst, l1c%NsLast )
-      ! call l1c_getRadAnal(uin, line_pos, l1c%radanal)
-      ! call l1c_getIISLoc(uin, line_pos, l1c%IISlon, l1c%IISlat)
-
-      return
-   end subroutine read_iasi_mdr_l1c_reduced
-
    ! subroutine read_iasi_l2_file( fname, granule )
    !    implicit none
    !    ! Variables

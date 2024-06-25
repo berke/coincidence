@@ -46,12 +46,13 @@ contains
 
     open(newunit=unit,file=in_fn,access='stream',status='old',action='read',convert='big_endian')
     do i=1,nrec
-       write (*,*) 'Processing granule ',i
+       write (*,*) 'Processing granule (reduced) ',i
+       ! call read_iasi_mdr_l1c_reduced(unit,recs(i)%pos,giadr_sf,mdr)
        call read_iasi_mdr_l1c(unit,recs(i)%pos,giadr_sf,mdr)
 
        do j=1,SNOT
           mdr%vdate(:,j) = time_sct2date(mdr%cds_date(j))
-          write (ounit,'(I8,X,I4,X,I4.4,6(X,I2.2),X,I3,4(1X,F10.4),4(1X,F10.4))') &
+          write (ounit,'(I8,X,I4,X,I4.4,6(X,I2.2),X,4(1X,I3),4(1X,F10.4),4(1X,F10.4))') &
                i, &
                j, &
                mdr%vdate(1,j), &
@@ -61,7 +62,7 @@ contains
                mdr%vdate(5,j), &
                mdr%vdate(6,j), &
                mdr%vdate(7,j), &
-               mdr%clc(1,j),mdr%lon(:,j),mdr%lat(:,j)
+               mdr%clc(:,j),mdr%lon(:,j),mdr%lat(:,j)
        end do
     end do
     close(ounit)

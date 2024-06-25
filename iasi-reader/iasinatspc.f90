@@ -100,6 +100,7 @@ contains
 
        write (*,*) 'Quality :',mdr%flg(:,ipix,iscan)
 
+       write (*,*) 'Timestamp:',mdr%cds_date(iscan)
        mdr%vdate(:,iscan) = time_sct2date(mdr%cds_date(iscan))
        write (ounit,'("[",I0,".",I0,".",I0,"]")') igra,iscan,ipix
        write (ounit,'("timestamp = ",I4.4,"-",I2.2,"-",I2.2,"T",I2.2,":",I2.2,":",I2.2,"Z")') &
