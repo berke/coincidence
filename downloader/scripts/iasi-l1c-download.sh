@@ -104,7 +104,7 @@ check_eumetsat_api_token() {
 
 delay_min=2.0
 delay_max=30
-delay_alpha=1.25
+delay_alpha=1.05
 delay_pause=30
 #delay=$delay_min
 delay=4.8828125
