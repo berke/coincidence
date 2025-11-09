@@ -2,10 +2,12 @@
 
 mod misc_error;
 mod poly_utils;
+mod report;
 
 use std::error::Error;
 use std::fs::File;
 use std::io::{Write,BufWriter};
+use std::path::Path;
 use log::{trace,info,error};
 use clap::{Arg,App};
 use chrono::{Utc,TimeZone,NaiveDateTime,DateTime};
@@ -17,6 +19,7 @@ use geo_clipper::Clipper;
 
 use footprint::Footprints;
 use poly_utils::{clip_to_roi,outline_to_multipolygon,FACTOR};
+use report::{Report,ReportLine};
 
 fn check_intersection(m1:&MultiPolygon<f64>,m2:&MultiPolygon<f64>)->Option<(f64,MultiPolygon<f64>)> {
     if m1.intersects(m2) {
@@ -141,8 +144,7 @@ fn main()->Result<(),Box<dyn Error>> {
     let mut n_omega_too_low1 = 0;
     let mut n_omega_too_low2 = 0;
 
-    let report_fd = File::create(report_fn)?;
-    let mut report_buf = BufWriter::new(report_fd);
+    let mut report = Report::new(report_fn)?;
 
     let mut fps_in_roi1 = Vec::new();
     let mut fps_in_roi2 = Vec::new();
@@ -256,13 +258,19 @@ fn main()->Result<(),Box<dyn Error>> {
 				   n_inter,f1.id,f2.id,min_delta_t,tau,psi,ts0,ts1);
 
 			    if let Some(c) = inter_mp.centroid() {
-				writeln!(report_buf,"{:04}\t{}\t{}\t{:5.1}\t{:5.3}\t{:5.3}\t{}\t{}\t{:5.3}\t{:5.3}",
-					 n_inter,
-					 ts0,
-					 ts1,
-					 min_delta_t,tau,psi,f1.id,f2.id,
-					 c.x(),
-					 c.y())?;
+				let rl = ReportLine {
+				    n_inter,
+				    ts0,
+				    ts1,
+				    min_delta_t,
+				    tau,
+				    psi,
+				    id1:&f1.id,
+				    id2:&f2.id,
+				    c_x:c.x(),
+				    c_y:c.y()
+				};
+				report.add_line(&rl)?;
 			    } else {
 				error!("Cannot compute centroid for {:04}",n_inter)
 			    }
