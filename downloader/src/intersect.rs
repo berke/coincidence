@@ -257,22 +257,27 @@ fn main()->Result<(),Box<dyn Error>> {
 			    trace!("Intersection {:04}: {} vs {} (time difference {}, tau {}), psi: {}, time: {} to {}",
 				   n_inter,f1.id,f2.id,min_delta_t,tau,psi,ts0,ts1);
 
-			    if let Some(c) = inter_mp.centroid() {
-				let rl = ReportLine {
-				    n_inter,
-				    ts0,
-				    ts1,
-				    min_delta_t,
-				    tau,
-				    psi,
-				    id1:&f1.id,
-				    id2:&f2.id,
-				    c_x:c.x(),
-				    c_y:c.y()
-				};
-				report.add_line(&rl)?;
+			    if let Some(c1) = f1_mp.centroid() {
+				if let Some(c2) = f2_mp.centroid() {
+				    let rl = ReportLine {
+					n_inter,
+					ts:ts0, // XXX
+					min_delta_t,
+					tau,
+					psi,
+					id1:&f1.id,
+					lon1:c1.x(),
+					lat1:c1.y(),
+					id2:&f2.id,
+					lon2:c2.x(),
+					lat2:c2.y(),
+				    };
+				    report.add_line(&rl)?;
+				} else {
+				    error!("Cannot compute FP2 centroid for {:04}",n_inter)
+				}
 			    } else {
-				error!("Cannot compute centroid for {:04}",n_inter)
+				error!("Cannot compute FP1 centroid for {:04}",n_inter)
 			    }
 
 			    if let Some(fp_fn) = args.value_of("output_base") {

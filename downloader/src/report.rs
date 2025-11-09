@@ -5,16 +5,22 @@ pub struct Report {
 }
 
 pub struct ReportLine<'a> {
+    /// Intersection ID
     pub n_inter:usize,
-    pub ts0:DateTime<Utc>,
-    pub ts1:DateTime<Utc>,
+
+    /// Timestamp
+    pub ts:DateTime<Utc>,
     pub min_delta_t:f64,
     pub tau:f64,
     pub psi:f64,
+
     pub id1:&'a str,
+    pub lon1:f64,
+    pub lat1:f64,
+
     pub id2:&'a str,
-    pub c_x:f64,
-    pub c_y:f64
+    pub lon2:f64,
+    pub lat2:f64
 }
 
 impl Report {
@@ -24,31 +30,50 @@ impl Report {
 	Ok(Self { buf })
     }
 
+    pub fn show_header(&mut self)->Result<(),Box<dyn Error>> {
+	writeln!(self.buf,
+		 "# n_inter ts min_delta_t tau psi id1 lon1 lat1 id2 lon2 lat2")?;
+	Ok(())
+    }
+
     pub fn add_line(&mut self,line:&ReportLine)->Result<(),Box<dyn Error>> {
 	let &ReportLine {
 	    n_inter,
-	    ts0,
-	    ts1,
+	    ts,
 	    min_delta_t,
 	    tau,
 	    psi,
 	    ref id1,
+	    lon1,
+	    lat1,
 	    ref id2,
-	    c_x,
-	    c_y,
+	    lon2,
+	    lat2
 	} = line;
-	writeln!(self.buf,
-		 "{:04}\t{}\t{}\t{:5.1}\t{:5.3}\t{:5.3}\t{}\t{}\t{:5.3}\t{:5.3}",
-		 n_inter,
-		 ts0,
-		 ts1,
-		 min_delta_t,
-		 tau,
-		 psi,
-		 id1,
-		 id2,
-		 c_x,
-		 c_y)?;
+
+	write!(self.buf,
+	       "{:04}\t\
+		{}\t\
+		{}\t\
+		{:5.1}\t\
+		{:5.3}\t",
+	       n_inter,
+	       ts,
+	       min_delta_t,
+	       tau,
+	       psi)?;
+	write!(self.buf,
+	       "{}\t{:5.3}\t{:5.3}",
+	       id1,
+	       lon1,
+	       lat1)?;
+	write!(self.buf,
+	       "{}\t{:5.3}\t{:5.3}",
+	       id2,
+	       lon2,
+	       lat2)?;
+	writeln!(self.buf)?;
+
 	Ok(())
     }
 }
