@@ -8,15 +8,15 @@ pub const FACTOR : f64 = (1 << 24) as f64 / 360.0;
 
 pub fn ring_to_vec<F:Fn((f64,f64))->(f64,f64)>(p:&Polygon<f64>,f:F)->Vec<(f64,f64)> {
     let (pve1,_) = p.clone().into_inner();
-    let pve1 : Vec<(f64,f64)> = pve1.points_iter().map(|pt| f((pt.x(),pt.y()))).collect();
+    let pve1 : Vec<(f64,f64)> = pve1.points().map(|pt| f((pt.x(),pt.y()))).collect();
     pve1
 }
 
 pub fn polygon_to_vec<F:Fn((f64,f64))->(f64,f64)>(p:&Polygon<f64>,f:F)->Vec<Vec<(f64,f64)>> {
     let (pve1,pvi1) = p.clone().into_inner();
-    let pve1 : Vec<(f64,f64)> = pve1.points_iter().map(|pt| f((pt.x(),pt.y()))).collect();
+    let pve1 : Vec<(f64,f64)> = pve1.points().map(|pt| f((pt.x(),pt.y()))).collect();
     let mut pvi1 : Vec<Vec<(f64,f64)>> =
-	pvi1.iter().map(|ls| ls.points_iter().map(|pt| f((pt.x(),pt.y()))).collect()).collect();
+	pvi1.iter().map(|ls| ls.points().map(|pt| f((pt.x(),pt.y()))).collect()).collect();
     let mut u = Vec::new();
     u.push(pve1);
     u.append(&mut pvi1);
