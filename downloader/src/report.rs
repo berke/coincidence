@@ -63,13 +63,13 @@ impl Report {
 	       tau,
 	       psi)?;
 	write!(self.buf,
-	       "{}\t{:5.3}\t{:5.3}",
+	       "{}\t{}\t",
 	       id1,
-	       lon1,
-	       lat1)?;
+	       id2)?;
 	write!(self.buf,
-	       "{}\t{:5.3}\t{:5.3}",
-	       id2,
+	       "{:5.3}\t{:5.3}\t{:5.3}\t{:5.3}",
+	       lon1,
+	       lat1,
 	       lon2,
 	       lat2)?;
 	writeln!(self.buf)?;

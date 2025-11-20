@@ -13,10 +13,11 @@ use std::path::Path;
 use log::{trace,info,error};
 use clap::{Arg,App};
 use chrono::{Utc,TimeZone,NaiveDateTime,DateTime};
-use geo::{MultiPolygon,Polygon,LineString};
+use geo::{Distance,MultiPolygon,Polygon,LineString};
 use geo::algorithm::{area::Area,
 		     centroid::Centroid,
-		     intersects::Intersects};
+		     intersects::Intersects,
+		     line_measures::metric_spaces::Rhumb};
 use geo_clipper::Clipper;
 
 use footprint::Footprints;
@@ -74,6 +75,7 @@ fn main()->Result<(),Box<dyn Error>> {
 	     .help("Minimum temporal overlap ratio"))
 	.arg(Arg::with_name("t_min").long("t-min").help("Start of time range").takes_value(true))
 	.arg(Arg::with_name("t_max").long("t-max").help("End of time range").takes_value(true))
+	.arg(Arg::with_name("dist_max").long("dist-max").help("Maximum distance").takes_value(true))
 	.arg(Arg::with_name("verbose").short("v"))
 	.arg(Arg::with_name("save_no_inter").long("save-no-inter").help("Save diagnostic MPK files for pairs that do not have an intersection"))
 	.arg(Arg::with_name("psi_min").long("psi-min").default_value("0.50")
@@ -93,6 +95,7 @@ fn main()->Result<(),Box<dyn Error>> {
     let fp2_fn = args.value_of("input2").unwrap();
     let report_fn = args.value_of("report").unwrap();
 
+    let dist_max : f64 = args.value_of("dist_max").unwrap().parse().expect("Invalid distance limit");
     let delta_t_max : f64 = args.value_of("delta_t_max").unwrap().parse().expect("Invalid time limit");
     let tau_min : f64 = args.value_of("tau_min").unwrap().parse().expect("Invalid temporal overlap threshold");
     let lon0 : f64 = args.value_of("lon0").unwrap().parse().expect("Invalid starting longitude");
@@ -149,6 +152,7 @@ fn main()->Result<(),Box<dyn Error>> {
     let mut n_omega_too_low2 = 0;
 
     let mut report = Report::new(report_fn)?;
+    report.show_header()?;
 
     let mut fps_in_roi1 = Vec::new();
     let mut fps_in_roi2 = Vec::new();
@@ -208,11 +212,13 @@ fn main()->Result<(),Box<dyn Error>> {
 	  n_omega_too_low2);
 
     let mut n_pairs_tested = 0;
+    let mut n_dist_too_large = 0;
     let mut n_delta_t_too_high = 0;
     let mut n_tau_too_low = 0;
     let mut n_psi_too_low = 0;
     let mut n_no_intersection = 0;
     let mut min_delta_t_stats = StatEstimator::new();
+    let mut dist_stats = StatEstimator::new();
 
     let n_pairs_tot = fps_in_roi1.len()*fps_in_roi2.len();
     let mut prog = ProgressIndicator::new("Pairs",n_pairs_tot);
@@ -247,88 +253,96 @@ fn main()->Result<(),Box<dyn Error>> {
 			    (f1.time_interval.1.max(f2.time_interval.1) - f1.time_interval.0.min(f2.time_interval.0))
 		    };
 		if tau >= tau_min {
-		    if let Some((area,inter_mp)) = check_intersection(f1_mp,f2_mp) {
-			let psi = area / f1_mp_area.min(f2_mp_area);
-			if psi >= psi_min {
-			    let t0 = f1.time_interval.0.min(f2.time_interval.0);
-			    let t1 = f1.time_interval.1.max(f2.time_interval.1);
-			    let ts0 =
-				Utc.timestamp_opt(
-				    t0.floor() as i64,
-				    (t0.fract() * 1e9 + 0.5).floor() as u32)
-				.unwrap();
-			    let ts1 =
-				Utc.timestamp_opt(
-				    t1.floor() as i64,
-				    (t1.fract() * 1e9 + 0.5).floor() as u32)
-				.unwrap();
-			    trace!("F1 {:?} F2 {:?}",f1.time_interval,f2.time_interval);
+		    if let Some(c1) = f1_mp.centroid() {
+			if let Some(c2) = f2_mp.centroid() {
+			    let dist = Rhumb.distance(c1,c2);
+			    dist_stats.add(dist);
+			    if dist <= dist_max {
+				if let Some((area,inter_mp)) = check_intersection(f1_mp,f2_mp) {
+				    let psi = area / f1_mp_area.min(f2_mp_area);
+				    if psi >= psi_min {
+					let t0 = f1.time_interval.0.min(f2.time_interval.0);
+					let t1 = f1.time_interval.1.max(f2.time_interval.1);
+					let ts0 =
+					    Utc.timestamp_opt(
+						t0.floor() as i64,
+						(t0.fract() * 1e9 + 0.5).floor() as u32)
+					    .unwrap();
+					let ts1 =
+					    Utc.timestamp_opt(
+						t1.floor() as i64,
+						(t1.fract() * 1e9 + 0.5).floor() as u32)
+					    .unwrap();
+					trace!("F1 {:?} F2 {:?}",f1.time_interval,f2.time_interval);
 
-			    trace!("Intersection {:04}: {} vs {} (time difference {}, tau {}), psi: {}, time: {} to {}",
-				   n_inter,f1.id,f2.id,min_delta_t,tau,psi,ts0,ts1);
+					trace!("Intersection {:04}: {} vs {} (time difference {}, tau {}), psi: {}, time: {} to {}",
+					       n_inter,f1.id,f2.id,min_delta_t,tau,psi,ts0,ts1);
 
-			    if let Some(c1) = f1_mp.centroid() {
-				if let Some(c2) = f2_mp.centroid() {
-				    let rl = ReportLine {
-					n_inter,
-					ts:ts0, // XXX
-					min_delta_t,
-					tau,
-					psi,
-					id1:&f1.id,
-					lon1:c1.x(),
-					lat1:c1.y(),
-					id2:&f2.id,
-					lon2:c2.x(),
-					lat2:c2.y(),
-				    };
-				    report.add_line(&rl)?;
+					let rl = ReportLine {
+					    n_inter,
+					    ts:ts0, // XXX
+					    min_delta_t,
+					    tau,
+					    psi,
+					    id1:&f1.id,
+					    lon1:c1.x(),
+					    lat1:c1.y(),
+					    id2:&f2.id,
+					    lon2:c2.x(),
+					    lat2:c2.y(),
+					};
+					report.add_line(&rl)?;
+
+					if let Some(fp_fn) = args.value_of("output_base") {
+					    let mut f1c = f1.clone();
+					    let mut f2c = f2.clone();
+					    let mut f1ci = f1.clone();
+					    let mut f2ci = f2.clone();
+					    let mut inter = f2.clone();
+					    f1c.id = format!("FP1/{}/{}",n_inter,f1.id);
+					    f2c.id = format!("FP2/{}/{}",n_inter,f2.id);
+					    f1ci.id = format!("ROI1/{}/{}",n_inter,f1.id);
+					    f2ci.id = format!("ROI2/{}/{}",n_inter,f2.id);
+					    inter.id = format!("INT/{}/{}&{}",n_inter,f1.id,f2.id);
+					    f1ci.outline = poly_utils::multipolygon_to_vec(f1_mp);
+					    f2ci.outline = poly_utils::multipolygon_to_vec(f2_mp);
+					    inter.outline = poly_utils::multipolygon_to_vec(&inter_mp);
+					    let fps = Footprints{ footprints:vec![f1c,f2c,f1ci,f2ci,inter] };
+					    fps.save_to_file(&format!("{}p{:06}.mpk",fp_fn,n_inter))?;
+					}
+					
+					n_inter += 1;
+					prog.set_label(&format!("Pairs (found: {})",n_inter));
+				    } else {
+					n_psi_too_low += 1;
+				    }
 				} else {
-				    error!("Cannot compute FP2 centroid for {:04}",n_inter)
+				    n_no_intersection += 1;
+				    trace!("No intersection: {} vs {} (time difference {})",f1.id,f2.id,min_delta_t);
+
+				    if save_no_inter {
+					if let Some(fp_fn) = args.value_of("output_base") {
+					    let mut f1c = f1.clone();
+					    let mut f2c = f2.clone();
+					    f1c.id = format!("FP1/{}",f1.id);
+					    f2c.id = format!("FP2/{}",f2.id);
+					    f1c.outline = poly_utils::multipolygon_to_vec(f1_mp);
+					    f2c.outline = poly_utils::multipolygon_to_vec(f2_mp);
+					    let fps = Footprints{ footprints:vec![f1c,f2c] };
+					    fps.save_to_file(&format!("{}-no_inter-{:06}-{:06}.mpk",fp_fn,i1,i2))?;
+					}
+				    }
 				}
 			    } else {
-				error!("Cannot compute FP1 centroid for {:04}",n_inter)
+				n_dist_too_large += 1;
+				trace!("Rejected {} vs {} due to dist = {}",
+				       f1.id,f2.id,dist);
 			    }
-
-			    if let Some(fp_fn) = args.value_of("output_base") {
-				let mut f1c = f1.clone();
-				let mut f2c = f2.clone();
-				let mut f1ci = f1.clone();
-				let mut f2ci = f2.clone();
-				let mut inter = f2.clone();
-				f1c.id = format!("FP1/{}/{}",n_inter,f1.id);
-				f2c.id = format!("FP2/{}/{}",n_inter,f2.id);
-				f1ci.id = format!("ROI1/{}/{}",n_inter,f1.id);
-				f2ci.id = format!("ROI2/{}/{}",n_inter,f2.id);
-				inter.id = format!("INT/{}/{}&{}",n_inter,f1.id,f2.id);
-				f1ci.outline = poly_utils::multipolygon_to_vec(f1_mp);
-				f2ci.outline = poly_utils::multipolygon_to_vec(f2_mp);
-				inter.outline = poly_utils::multipolygon_to_vec(&inter_mp);
-				let fps = Footprints{ footprints:vec![f1c,f2c,f1ci,f2ci,inter] };
-				fps.save_to_file(&format!("{}p{:06}.mpk",fp_fn,n_inter))?;
-			    }
-			    
-			    n_inter += 1;
-			    prog.set_label(&format!("Pairs (found: {})",n_inter));
 			} else {
-			    n_psi_too_low += 1;
+			    error!("Cannot compute FP2 centroid for {:04}",n_inter)
 			}
 		    } else {
-			n_no_intersection += 1;
-			trace!("No intersection: {} vs {} (time difference {})",f1.id,f2.id,min_delta_t);
-
-			if save_no_inter {
-			    if let Some(fp_fn) = args.value_of("output_base") {
-				let mut f1c = f1.clone();
-				let mut f2c = f2.clone();
-				f1c.id = format!("FP1/{}",f1.id);
-				f2c.id = format!("FP2/{}",f2.id);
-				f1c.outline = poly_utils::multipolygon_to_vec(f1_mp);
-				f2c.outline = poly_utils::multipolygon_to_vec(f2_mp);
-				let fps = Footprints{ footprints:vec![f1c,f2c] };
-				fps.save_to_file(&format!("{}-no_inter-{:06}-{:06}.mpk",fp_fn,i1,i2))?;
-			    }
-			}
+			error!("Cannot compute FP1 centroid for {:04}",n_inter)
 		    }
 		} else {
 		    n_tau_too_low += 1;
@@ -342,12 +356,14 @@ fn main()->Result<(),Box<dyn Error>> {
     }
     info!("Number of pairs tested: {}",n_pairs_tested);
     info!("  ...rejected due to high delta t: {}",n_delta_t_too_high);
+    info!("  ...rejected due to high dist: {}",n_dist_too_large);
     info!("  ...rejected due to lack of intersection: {}",n_no_intersection);
     info!("  ...rejected due to low tau: {}",n_tau_too_low);
     info!("  ...rejected due to low psi: {}",n_psi_too_low);
     info!("Number of intersections found: {}",n_inter);
-    info!("Time statistics:");
+    info!("Statistics:");
     info!("  ...min_delta_t {}",min_delta_t_stats);
+    info!("  ...dist {}",dist_stats);
     
     Ok(())
 }
