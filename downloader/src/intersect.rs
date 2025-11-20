@@ -2,7 +2,9 @@
 
 mod misc_error;
 mod poly_utils;
+mod progress;
 mod report;
+mod stats;
 
 use std::error::Error;
 use std::fs::File;
@@ -20,6 +22,8 @@ use geo_clipper::Clipper;
 use footprint::Footprints;
 use poly_utils::{clip_to_roi,outline_to_multipolygon,FACTOR};
 use report::{Report,ReportLine};
+use stats::StatEstimator;
+use progress::ProgressIndicator;
 
 fn check_intersection(m1:&MultiPolygon<f64>,m2:&MultiPolygon<f64>)->Option<(f64,MultiPolygon<f64>)> {
     if m1.intersects(m2) {
@@ -208,6 +212,10 @@ fn main()->Result<(),Box<dyn Error>> {
     let mut n_tau_too_low = 0;
     let mut n_psi_too_low = 0;
     let mut n_no_intersection = 0;
+    let mut min_delta_t_stats = StatEstimator::new();
+
+    let n_pairs_tot = fps_in_roi1.len()*fps_in_roi2.len();
+    let mut prog = ProgressIndicator::new("Pairs",n_pairs_tot);
 
     for &(i1,ref f1_mp,f1_mp_area) in fps_in_roi1.iter() {
 	let f1 = &fps1.footprints[i1];
@@ -215,6 +223,7 @@ fn main()->Result<(),Box<dyn Error>> {
 	    let f2 = &fps2.footprints[i2];
 
 	    n_pairs_tested += 1;
+	    prog.update(n_pairs_tested);
 
 	    let min_delta_t =
 		if f1.time_interval.1 <= f2.time_interval.0 {
@@ -226,6 +235,7 @@ fn main()->Result<(),Box<dyn Error>> {
 			0.0
 		    }
 		};
+	    min_delta_t_stats.add(min_delta_t);
 	    
 	    if min_delta_t <= delta_t_max {
 		// Temporal overlap radio
@@ -299,6 +309,7 @@ fn main()->Result<(),Box<dyn Error>> {
 			    }
 			    
 			    n_inter += 1;
+			    prog.set_label(&format!("Pairs (found: {})",n_inter));
 			} else {
 			    n_psi_too_low += 1;
 			}
@@ -335,6 +346,8 @@ fn main()->Result<(),Box<dyn Error>> {
     info!("  ...rejected due to low tau: {}",n_tau_too_low);
     info!("  ...rejected due to low psi: {}",n_psi_too_low);
     info!("Number of intersections found: {}",n_inter);
+    info!("Time statistics:");
+    info!("  ...min_delta_t {}",min_delta_t_stats);
     
     Ok(())
 }
