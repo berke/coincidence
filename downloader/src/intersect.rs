@@ -104,14 +104,14 @@ fn main()->Result<(),Box<dyn Error>> {
     let lat1 : f64 = args.value_of("lat1").unwrap().parse().expect("Invalid ending latitude");
     let t_min =
 	if let Some(ts) = args.value_of("t_min") {
-	    DateTime::<Utc>::from_utc(NaiveDateTime::parse_from_str(ts,"%Y-%m-%dT%H:%M:%S")?,Utc)
+	    Utc.from_utc_datetime(&NaiveDateTime::parse_from_str(ts,"%Y-%m-%dT%H:%M:%S")?)
 		.timestamp_millis() as f64 / 1000.0
 	} else {
 	    0.0
 	};
     let t_max =
 	if let Some(ts) = args.value_of("t_max") {
-	    DateTime::<Utc>::from_utc(NaiveDateTime::parse_from_str(ts,"%Y-%m-%dT%H:%M:%S")?,Utc)
+	    Utc.from_utc_datetime(&NaiveDateTime::parse_from_str(ts,"%Y-%m-%dT%H:%M:%S")?)
 		.timestamp_millis() as f64 / 1000.0
 	} else {
 	    std::f64::INFINITY
