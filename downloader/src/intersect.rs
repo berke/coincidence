@@ -1,30 +1,34 @@
 #![allow(dead_code)]
 
-mod misc_error;
-mod poly_utils;
 mod progress;
+mod common;
 mod report;
 mod stats;
 
-use std::error::Error;
-use std::fs::File;
-use std::io::{Write,BufWriter};
-use std::path::Path;
-use log::{trace,info,error};
-use clap::{Arg,App};
-use chrono::{Utc,TimeZone,NaiveDateTime,DateTime};
-use geo::{Distance,MultiPolygon,Polygon,LineString};
-use geo::algorithm::{area::Area,
-		     centroid::Centroid,
-		     intersects::Intersects,
-		     line_measures::metric_spaces::Rhumb};
-use geo_clipper::Clipper;
+use common::*;
 
-use footprint::Footprints;
-use poly_utils::{clip_to_roi,outline_to_multipolygon,FACTOR};
-use report::{Report,ReportLine};
-use stats::StatEstimator;
-use progress::ProgressIndicator;
+fn locate<P,Q>(paths:&[P],name:Q,ext:&str)->Result<PathBuf>
+where P:AsRef<Path>,Q:AsRef<Path>
+{
+    let mut pb = PathBuf::new();
+    for base in paths {
+        pb.clear();
+        pb.push(&base);
+        pb.push(&name);
+        pb.add_extension(ext);
+        if pb.exists() {
+            return Ok(pb);
+        }
+    }
+    bail!("File {:?} not found in any path",name.as_ref())
+}
+
+fn timestamp_from_str(u:&str)->Result<f64> {
+    let ndt : NaiveDateTime =
+        NaiveDateTime::parse_from_str(u,"%Y-%m-%dT%H:%M:%S")?;
+    let ts : DateTime<_> = Utc.from_utc_datetime(&ndt);
+    Ok(ts.timestamp_millis() as f64 / 1000.0)
+}
 
 fn check_intersection(m1:&MultiPolygon<f64>,m2:&MultiPolygon<f64>)->Option<(f64,MultiPolygon<f64>)> {
     if m1.intersects(m2) {
@@ -51,75 +55,45 @@ fn check_intersection(m1:&MultiPolygon<f64>,m2:&MultiPolygon<f64>)->Option<(f64,
     }
 }
 
-fn main()->Result<(),Box<dyn Error>> {
-    let args = App::new("intersect")
-	.arg(Arg::with_name("input1").short("i1").long("input1").required(true).takes_value(true))
-	.arg(Arg::with_name("input2").short("i2").long("input2").required(true).takes_value(true))
-	.arg(Arg::with_name("report").short("r").long("report").required(true)
-	     .help("Path to output report to be created")
-	     .takes_value(true))
-	.arg(Arg::with_name("output_base").short("o").long("output-base")
-	     .help("Base name for footprint output files")
-	     .takes_value(true))
-	.arg(Arg::with_name("lon0").long("lon0").default_value("-5.0")
-	     .help("Starting longitude of ROI").allow_hyphen_values(true))
-	.arg(Arg::with_name("lon1").long("lon1").default_value("9.0")
-	     .help("Ending longitude of ROI").allow_hyphen_values(true))
-	.arg(Arg::with_name("lat0").long("lat0").default_value("42.0")
-	     .help("Starting latitude of ROI").allow_hyphen_values(true))
-	.arg(Arg::with_name("lat1").long("lat1").default_value("52.0")
-	     .help("Ending latitude of ROI").allow_hyphen_values(true))
-	.arg(Arg::with_name("delta_t_max").long("delta-t-max").default_value("13200.0")
-	     .help("Maximum mean time difference (s)"))
-	.arg(Arg::with_name("tau_min").long("tau-min").default_value("0.0")
-	     .help("Minimum temporal overlap ratio"))
-	.arg(Arg::with_name("t_min").long("t-min").help("Start of time range").takes_value(true))
-	.arg(Arg::with_name("t_max").long("t-max").help("End of time range").takes_value(true))
-	.arg(Arg::with_name("dist_max").long("dist-max").help("Maximum distance").takes_value(true))
-	.arg(Arg::with_name("verbose").short("v"))
-	.arg(Arg::with_name("save_no_inter").long("save-no-inter").help("Save diagnostic MPK files for pairs that do not have an intersection"))
-	.arg(Arg::with_name("psi_min").long("psi-min").default_value("0.50")
-	     .help("Minimal overlap ratio between footprints"))
-	.arg(Arg::with_name("omega_min").long("omega-min").default_value("0.0")
-	     .help("Minimum overlap ratio with ROI"))
-	.get_matches();
-
-    let verbose = args.is_present("verbose");
-    let save_no_inter = args.is_present("save_no_inter");
+fn main()->Result<()> {
+    let mut args = Arguments::from_env();
+    let verbose = args.contains("--verbose");
+    let trace = args.contains("--trace");
+    let debug = args.contains("--debug");
+    let data_paths : Vec<OsString> = args.values_from_str("--data-path")?;
+    let input_path : OsString = args.value_from_str("--input")?;
+    let output_base : Option<OsString> = args.opt_value_from_str("--output-base")?;
+    let report_fn : OsString = args.value_from_str("--report")?;
+    let dist_max : f64 = args.opt_value_from_str("--dist-max")?.unwrap_or(1e4);
+    let t_min : f64 = args.opt_value_from_fn("--t-min",timestamp_from_str)?
+        .unwrap_or(0.0);
+    let t_max : f64 = args.opt_value_from_fn("--t-max",timestamp_from_str)?
+        .unwrap_or(f64::INFINITY);
+    let delta_t_max : f64 = args.opt_value_from_str("--delta-t-max")?
+        .unwrap_or(13200.0);
+    let tau_min : f64 = args.opt_value_from_str("--tau-min")?.unwrap_or(0.0);
+    let psi_min : f64 = args.opt_value_from_str("--psi-min")?.unwrap_or(0.50);
+    let omega_min : f64 = args.opt_value_from_str("--omega-min")?.unwrap_or(0.0);
+    let lon0 : f64 = args.opt_value_from_str("--lon0")?.unwrap_or(-180.0);
+    let lon1 : f64 = args.opt_value_from_str("--lon1")?.unwrap_or(180.0);
+    let lat0 : f64 = args.opt_value_from_str("--lat0")?.unwrap_or(-90.0);
+    let lat1 : f64 = args.opt_value_from_str("--lat1")?.unwrap_or(90.0);
+    let save_no_inter = args.contains("--save-no-inter");
 
     simple_logger::SimpleLogger::new()
-	.with_level(if verbose { log::LevelFilter::Trace } else { log::LevelFilter::Info })
-	.init()?;
+        .with_level(
+            if trace { log::LevelFilter::Trace }
+            else if debug { log::LevelFilter::Debug }
+            else if verbose { log::LevelFilter::Info }
+            else { log::LevelFilter::Warn })
+        .init()?;
 
-    let fp1_fn = args.value_of("input1").unwrap();
-    let fp2_fn = args.value_of("input2").unwrap();
-    let report_fn = args.value_of("report").unwrap();
+    info!("Loading coincidence file from {:?}",input_path);
+    let coin = Coincidence::load(&input_path)?;
 
-    let dist_max : f64 = args.value_of("dist_max").unwrap().parse().expect("Invalid distance limit");
-    let delta_t_max : f64 = args.value_of("delta_t_max").unwrap().parse().expect("Invalid time limit");
-    let tau_min : f64 = args.value_of("tau_min").unwrap().parse().expect("Invalid temporal overlap threshold");
-    let lon0 : f64 = args.value_of("lon0").unwrap().parse().expect("Invalid starting longitude");
-    let lat0 : f64 = args.value_of("lat0").unwrap().parse().expect("Invalid starting latitude");
-    let lon1 : f64 = args.value_of("lon1").unwrap().parse().expect("Invalid ending longitude");
-    let lat1 : f64 = args.value_of("lat1").unwrap().parse().expect("Invalid ending latitude");
-    let t_min =
-	if let Some(ts) = args.value_of("t_min") {
-	    Utc.from_utc_datetime(&NaiveDateTime::parse_from_str(ts,"%Y-%m-%dT%H:%M:%S")?)
-		.timestamp_millis() as f64 / 1000.0
-	} else {
-	    0.0
-	};
-    let t_max =
-	if let Some(ts) = args.value_of("t_max") {
-	    Utc.from_utc_datetime(&NaiveDateTime::parse_from_str(ts,"%Y-%m-%dT%H:%M:%S")?)
-		.timestamp_millis() as f64 / 1000.0
-	} else {
-	    std::f64::INFINITY
-	};
-    let omega_min : f64 = args.value_of("omega_min")
-	.unwrap().parse().expect("Invalid omega value");
-    let psi_min : f64 = args.value_of("psi_min")
-	.unwrap().parse().expect("Invalid psi value");
+    info!("Comparing {} vs {}",coin.name1,coin.name2);
+    let fp1_fn = locate(&data_paths,coin.name1,"mpk")?;
+    let fp2_fn = locate(&data_paths,coin.name2,"mpk")?;
 
     info!("ROI: latitudes {} to {}, longitudes {} to {}",lat0,lat1,lon0,lon1);
     let roi =
@@ -131,13 +105,12 @@ fn main()->Result<(),Box<dyn Error>> {
 		(lon0,lat1)
 	    ]),
 	    vec![]);
-    // let roi_area = roi.unsigned_area();
 
-    info!("Loading first set of footprints from {}",fp1_fn);
+    info!("Loading first set of footprints from {:?}",fp1_fn);
     let fps1 = Footprints::from_file(fp1_fn)?;
     let n1 = fps1.footprints.len();
 
-    info!("Loading second set of footprints from {}",fp2_fn);
+    info!("Loading second set of footprints from {:?}",fp2_fn);
     let fps2 = Footprints::from_file(fp2_fn)?;
     let n2 = fps2.footprints.len();
 
@@ -154,8 +127,10 @@ fn main()->Result<(),Box<dyn Error>> {
     let mut report = Report::new(report_fn)?;
     report.show_header()?;
 
-    let mut fps_in_roi1 = Vec::new();
-    let mut fps_in_roi2 = Vec::new();
+    let mut fps_in_roi1 = HashMap::new();
+    let mut fps_in_roi2 = HashMap::new();
+
+    let mut midp = MeasIdParser::new()?;
 
     for i1 in 0..n1 {
 	let f1 = &fps1.footprints[i1];
@@ -168,7 +143,9 @@ fn main()->Result<(),Box<dyn Error>> {
 	if let Some(f1_mp) = clip_to_roi(&roi,&f1_mp0) {
 	    let f1_mp_area = f1_mp.unsigned_area();
 	    if f1_mp_area >= omega_min*f1_area {
-		fps_in_roi1.push((i1,f1_mp,f1_mp_area));
+                let mid1 = midp.parse(&f1.id)?;
+                let idx : Index = mid1.index.try_into()?;
+                fps_in_roi1.insert(idx,(i1,f1_mp,f1_mp_area));
 		continue;
 	    }
 	} else {
@@ -189,7 +166,9 @@ fn main()->Result<(),Box<dyn Error>> {
 	if let Some(f2_mp) = clip_to_roi(&roi,&f2_mp0) {
 	    let f2_mp_area = f2_mp.unsigned_area();
 	    if f2_mp_area >= omega_min*f2_area {
-		fps_in_roi2.push((i2,f2_mp,f2_mp_area));
+                let mid2 = midp.parse(&f2.id)?;
+                let idx : Index = mid2.index.try_into()?;
+                fps_in_roi2.insert(idx,(i2,f2_mp,f2_mp_area));
 		continue;
 	    }
 	} else {
@@ -223,137 +202,158 @@ fn main()->Result<(),Box<dyn Error>> {
     let n_pairs_tot = fps_in_roi1.len()*fps_in_roi2.len();
     let mut prog = ProgressIndicator::new("Pairs",n_pairs_tot);
 
-    for &(i1,ref f1_mp,f1_mp_area) in fps_in_roi1.iter() {
-	let f1 = &fps1.footprints[i1];
-	for &(i2,ref f2_mp,f2_mp_area) in fps_in_roi2.iter() {
-	    let f2 = &fps2.footprints[i2];
+    let mut nidx1_not_found = 0;
+    let mut nidx2_not_found = 0;
+    for (p1,p2) in &coin.pairs {
+        for idx1 in p1 {
+            if let Some(&(i1,ref f1_mp,f1_mp_area)) = fps_in_roi1.get(&idx1) {
+                let f1 = &fps1.footprints[i1];
+                for idx2 in p2 {
+                    if let Some(&(i2,ref f2_mp,f2_mp_area)) = fps_in_roi2.get(&idx2) {
+                        let f2 = &fps2.footprints[i2];
 
-	    n_pairs_tested += 1;
-	    prog.update(n_pairs_tested);
+                        n_pairs_tested += 1;
+                        prog.update(n_pairs_tested);
 
-	    let min_delta_t =
-		if f1.time_interval.1 <= f2.time_interval.0 {
-		    f2.time_interval.0 - f1.time_interval.1
-		} else {
-		    if f2.time_interval.1 <= f1.time_interval.0 {
-			f1.time_interval.0 - f2.time_interval.1
-		    } else {
-			0.0
-		    }
-		};
-	    min_delta_t_stats.add(min_delta_t);
-	    
-	    if min_delta_t <= delta_t_max {
-		// Temporal overlap radio
-		let tau =
-		    if min_delta_t > 0.0 {
-			0.0
-		    } else {
-			(f1.time_interval.1.min(f2.time_interval.1) - f1.time_interval.0.max(f2.time_interval.0)) /
-			    (f1.time_interval.1.max(f2.time_interval.1) - f1.time_interval.0.min(f2.time_interval.0))
-		    };
-		if tau >= tau_min {
-		    if let Some(c1) = f1_mp.centroid() {
-			if let Some(c2) = f2_mp.centroid() {
-			    let dist = Rhumb.distance(c1,c2);
-			    dist_stats.add(dist);
-			    if dist <= dist_max {
-				if let Some((area,inter_mp)) = check_intersection(f1_mp,f2_mp) {
-				    let psi = area / f1_mp_area.min(f2_mp_area);
-				    if psi >= psi_min {
-					let t0 = f1.time_interval.0.min(f2.time_interval.0);
-					let t1 = f1.time_interval.1.max(f2.time_interval.1);
-					let ts0 =
-					    Utc.timestamp_opt(
-						t0.floor() as i64,
-						(t0.fract() * 1e9 + 0.5).floor() as u32)
-					    .unwrap();
-					let ts1 =
-					    Utc.timestamp_opt(
-						t1.floor() as i64,
-						(t1.fract() * 1e9 + 0.5).floor() as u32)
-					    .unwrap();
-					trace!("F1 {:?} F2 {:?}",f1.time_interval,f2.time_interval);
+	                let min_delta_t =
+		            if f1.time_interval.1 <= f2.time_interval.0 {
+		                f2.time_interval.0 - f1.time_interval.1
+		            } else {
+		                if f2.time_interval.1 <= f1.time_interval.0 {
+			            f1.time_interval.0 - f2.time_interval.1
+		                } else {
+			            0.0
+		                }
+		            };
+	                min_delta_t_stats.add(min_delta_t);
+	                
+	                if min_delta_t <= delta_t_max {
+		            // Temporal overlap radio
+		            let tau =
+		                if min_delta_t > 0.0 {
+			            0.0
+		                } else {
+			            (f1.time_interval.1.min(f2.time_interval.1) - f1.time_interval.0.max(f2.time_interval.0)) /
+			                (f1.time_interval.1.max(f2.time_interval.1) - f1.time_interval.0.min(f2.time_interval.0))
+		                };
+		            if tau >= tau_min {
+		                if let Some(c1) = f1_mp.centroid() {
+			            if let Some(c2) = f2_mp.centroid() {
+			                let dist = Rhumb.distance(c1,c2);
+			                dist_stats.add(dist);
+			                if dist <= dist_max {
+				            if let Some((area,inter_mp)) = check_intersection(f1_mp,f2_mp) {
+				                let psi = area / f1_mp_area.min(f2_mp_area);
+				                if psi >= psi_min {
+					            let t0 = f1.time_interval.0.min(f2.time_interval.0);
+					            let t1 = f1.time_interval.1.max(f2.time_interval.1);
+					            let ts0 =
+					                Utc.timestamp_opt(
+						            t0.floor() as i64,
+						            (t0.fract() * 1e9 + 0.5).floor() as u32)
+					                .unwrap();
+					            let ts1 =
+					                Utc.timestamp_opt(
+						            t1.floor() as i64,
+						            (t1.fract() * 1e9 + 0.5).floor() as u32)
+					                .unwrap();
+					            trace!("F1 {:?} F2 {:?}",f1.time_interval,f2.time_interval);
 
-					trace!("Intersection {:04}: {} vs {} (time difference {}, tau {}), psi: {}, time: {} to {}",
-					       n_inter,f1.id,f2.id,min_delta_t,tau,psi,ts0,ts1);
+					            trace!("Intersection {:04}: {} vs {} (time difference {}, tau {}), psi: {}, time: {} to {}",
+					                   n_inter,f1.id,f2.id,min_delta_t,tau,psi,ts0,ts1);
 
-					let rl = ReportLine {
-					    n_inter,
-					    ts:ts0, // XXX
-					    min_delta_t,
-					    tau,
-					    psi,
-					    id1:&f1.id,
-					    lon1:c1.x(),
-					    lat1:c1.y(),
-					    id2:&f2.id,
-					    lon2:c2.x(),
-					    lat2:c2.y(),
-					};
-					report.add_line(&rl)?;
+					            let rl = ReportLine {
+					                n_inter,
+					                ts:ts0, // XXX
+					                min_delta_t,
+					                tau,
+					                psi,
+					                id1:&f1.id,
+					                lon1:c1.x(),
+					                lat1:c1.y(),
+					                id2:&f2.id,
+					                lon2:c2.x(),
+					                lat2:c2.y(),
+					            };
+					            report.add_line(&rl)?;
 
-					if let Some(fp_fn) = args.value_of("output_base") {
-					    let mut f1c = f1.clone();
-					    let mut f2c = f2.clone();
-					    let mut f1ci = f1.clone();
-					    let mut f2ci = f2.clone();
-					    let mut inter = f2.clone();
-					    f1c.id = format!("FP1/{}/{}",n_inter,f1.id);
-					    f2c.id = format!("FP2/{}/{}",n_inter,f2.id);
-					    f1ci.id = format!("ROI1/{}/{}",n_inter,f1.id);
-					    f2ci.id = format!("ROI2/{}/{}",n_inter,f2.id);
-					    inter.id = format!("INT/{}/{}&{}",n_inter,f1.id,f2.id);
-					    f1ci.outline = poly_utils::multipolygon_to_vec(f1_mp);
-					    f2ci.outline = poly_utils::multipolygon_to_vec(f2_mp);
-					    inter.outline = poly_utils::multipolygon_to_vec(&inter_mp);
-					    let fps = Footprints{ footprints:vec![f1c,f2c,f1ci,f2ci,inter] };
-					    fps.save_to_file(&format!("{}p{:06}.mpk",fp_fn,n_inter))?;
-					}
-					
-					n_inter += 1;
-					prog.set_label(&format!("Pairs (found: {})",n_inter));
-				    } else {
-					n_psi_too_low += 1;
-				    }
-				} else {
-				    n_no_intersection += 1;
-				    trace!("No intersection: {} vs {} (time difference {})",f1.id,f2.id,min_delta_t);
+					            if let Some(ref fp_fn) = output_base {
+					                let mut f1c = f1.clone();
+					                let mut f2c = f2.clone();
+					                let mut f1ci = f1.clone();
+					                let mut f2ci = f2.clone();
+					                let mut inter = f2.clone();
+					                f1c.id = format!("FP1/{}/{}",n_inter,f1.id);
+					                f2c.id = format!("FP2/{}/{}",n_inter,f2.id);
+					                f1ci.id = format!("ROI1/{}/{}",n_inter,f1.id);
+					                f2ci.id = format!("ROI2/{}/{}",n_inter,f2.id);
+					                inter.id = format!("INT/{}/{}&{}",n_inter,f1.id,f2.id);
+					                f1ci.outline = poly_utils::multipolygon_to_vec(f1_mp);
+					                f2ci.outline = poly_utils::multipolygon_to_vec(f2_mp);
+					                inter.outline = poly_utils::multipolygon_to_vec(&inter_mp);
+					                let fps = Footprints{ footprints:vec![f1c,f2c,f1ci,f2ci,inter] };
+                                                        let mut pb : PathBuf = fp_fn.into();
+					                pb.push(format!("p{:06}.mpk",n_inter));
+					                fps.save_to_file(&pb)?;
+					            }
+					            
+					            n_inter += 1;
+					            prog.set_label(&format!("Pairs (found: {})",n_inter));
+				                } else {
+					            n_psi_too_low += 1;
+				                }
+				            } else {
+				                n_no_intersection += 1;
+				                trace!("No intersection: {} vs {} (time difference {})",f1.id,f2.id,min_delta_t);
 
-				    if save_no_inter {
-					if let Some(fp_fn) = args.value_of("output_base") {
-					    let mut f1c = f1.clone();
-					    let mut f2c = f2.clone();
-					    f1c.id = format!("FP1/{}",f1.id);
-					    f2c.id = format!("FP2/{}",f2.id);
-					    f1c.outline = poly_utils::multipolygon_to_vec(f1_mp);
-					    f2c.outline = poly_utils::multipolygon_to_vec(f2_mp);
-					    let fps = Footprints{ footprints:vec![f1c,f2c] };
-					    fps.save_to_file(&format!("{}-no_inter-{:06}-{:06}.mpk",fp_fn,i1,i2))?;
-					}
-				    }
-				}
-			    } else {
-				n_dist_too_large += 1;
-				trace!("Rejected {} vs {} due to dist = {}",
-				       f1.id,f2.id,dist);
-			    }
-			} else {
-			    error!("Cannot compute FP2 centroid for {:04}",n_inter)
-			}
-		    } else {
-			error!("Cannot compute FP1 centroid for {:04}",n_inter)
-		    }
-		} else {
-		    n_tau_too_low += 1;
-		    trace!("Rejected {} vs {} due to tau = {}",f1.id,f2.id,tau);
-		}
-	    } else {
-		n_delta_t_too_high += 1;
-		trace!("Rejected {} vs {} due to delta_t = {}",f1.id,f2.id,min_delta_t);
-	    }
-	}
+				                if save_no_inter {
+					            if let Some(ref fp_fn) = output_base {
+					                let mut f1c = f1.clone();
+					                let mut f2c = f2.clone();
+					                f1c.id = format!("FP1/{}",f1.id);
+					                f2c.id = format!("FP2/{}",f2.id);
+					                f1c.outline = poly_utils::multipolygon_to_vec(f1_mp);
+					                f2c.outline = poly_utils::multipolygon_to_vec(f2_mp);
+					                let fps = Footprints{ footprints:vec![f1c,f2c] };
+                                                        let mut pb : PathBuf = fp_fn.into();
+                                                        pb.push(format!("no_inter-{:06}-{:06}.mpk",i1,i2));
+                                                        fps.save_to_file(&pb)?;
+					            }
+				                }
+				            }
+			                } else {
+				            n_dist_too_large += 1;
+				            trace!("Rejected {} vs {} due to dist = {}",
+				                   f1.id,f2.id,dist);
+			                }
+			            } else {
+			                error!("Cannot compute FP2 centroid for {:04}",n_inter)
+			            }
+		                } else {
+			            error!("Cannot compute FP1 centroid for {:04}",n_inter)
+		                }
+		            } else {
+		                n_tau_too_low += 1;
+		                trace!("Rejected {} vs {} due to tau = {}",f1.id,f2.id,tau);
+		            }
+	                } else {
+		            n_delta_t_too_high += 1;
+		            trace!("Rejected {} vs {} due to delta_t = {}",f1.id,f2.id,min_delta_t);
+	                }
+
+                    } else {
+                        nidx2_not_found += 1;
+                    }
+                }
+            } else {
+                nidx1_not_found += 1;
+            }
+        }
     }
+    info!("Number of indices not found: {}, {}",
+          nidx1_not_found,
+          nidx2_not_found);
+
     info!("Number of pairs tested: {}",n_pairs_tested);
     info!("  ...rejected due to high delta t: {}",n_delta_t_too_high);
     info!("  ...rejected due to high dist: {}",n_dist_too_large);
@@ -364,6 +364,6 @@ fn main()->Result<(),Box<dyn Error>> {
     info!("Statistics:");
     info!("  ...min_delta_t {}",min_delta_t_stats);
     info!("  ...dist {}",dist_stats);
-    
+
     Ok(())
 }

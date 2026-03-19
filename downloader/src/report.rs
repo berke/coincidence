@@ -24,19 +24,19 @@ pub struct ReportLine<'a> {
 }
 
 impl Report {
-    pub fn new<P:AsRef<Path>>(path:P)->Result<Self,Box<dyn Error>> {
+    pub fn new<P:AsRef<Path>>(path:P)->Result<Self> {
 	let fd = File::create(path)?;
 	let buf = BufWriter::new(fd);
 	Ok(Self { buf })
     }
 
-    pub fn show_header(&mut self)->Result<(),Box<dyn Error>> {
+    pub fn show_header(&mut self)->Result<()> {
 	writeln!(self.buf,
 		 "# n_inter ts min_delta_t tau psi id1 lon1 lat1 id2 lon2 lat2")?;
 	Ok(())
     }
 
-    pub fn add_line(&mut self,line:&ReportLine)->Result<(),Box<dyn Error>> {
+    pub fn add_line(&mut self,line:&ReportLine)->Result<()> {
 	let &ReportLine {
 	    n_inter,
 	    ts,
