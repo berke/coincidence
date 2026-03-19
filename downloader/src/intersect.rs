@@ -196,14 +196,19 @@ fn main()->Result<()> {
     let mut n_tau_too_low = 0;
     let mut n_psi_too_low = 0;
     let mut n_no_intersection = 0;
+    let mut n_idx1_not_found = 0;
+    let mut n_idx2_not_found = 0;
     let mut min_delta_t_stats = StatEstimator::new();
     let mut dist_stats = StatEstimator::new();
 
-    let n_pairs_tot = fps_in_roi1.len()*fps_in_roi2.len();
-    let mut prog = ProgressIndicator::new("Pairs",n_pairs_tot);
+    let n_pairs_tot = coin.pairs.iter().fold(0,|n,(p1,p2)| n + p1.len()*p2.len());
+    let n_pairs_possible = fps_in_roi1.len()*fps_in_roi2.len();
+    info!("Total pairs: {}, possible: {}, indexing ratio: {:.1}:1",
+          n_pairs_tot,
+          n_pairs_possible,
+          n_pairs_possible as f64/n_pairs_tot as f64);
 
-    let mut nidx1_not_found = 0;
-    let mut nidx2_not_found = 0;
+    let mut prog = ProgressIndicator::new("Pairs",n_pairs_tot);
     for (p1,p2) in &coin.pairs {
         for idx1 in p1 {
             if let Some(&(i1,ref f1_mp,f1_mp_area)) = fps_in_roi1.get(&idx1) {
@@ -342,17 +347,17 @@ fn main()->Result<()> {
 	                }
 
                     } else {
-                        nidx2_not_found += 1;
+                        n_idx2_not_found += 1;
                     }
                 }
             } else {
-                nidx1_not_found += 1;
+                n_idx1_not_found += 1;
             }
         }
     }
     info!("Number of indices not found: {}, {}",
-          nidx1_not_found,
-          nidx2_not_found);
+          n_idx1_not_found,
+          n_idx2_not_found);
 
     info!("Number of pairs tested: {}",n_pairs_tested);
     info!("  ...rejected due to high delta t: {}",n_delta_t_too_high);
