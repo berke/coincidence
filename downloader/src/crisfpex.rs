@@ -9,6 +9,7 @@ use chrono::{DateTime,NaiveDate,Duration,Utc};
 use clap::{Arg,App};
 use misc_error::MiscError;
 use footprint::{Footprint,Footprints};
+use hdf5_metno as hdf5;
 
 fn process(geo_fn:&str,footprints:&mut Vec<Footprint>)->Result<(),Box<dyn Error>> {
     info!("Processing file {}",geo_fn);

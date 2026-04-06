@@ -13,10 +13,11 @@ use misc_error::MiscError;
 use footprint::{Footprint,Footprints};
 use ndarray::{ArrayD,Array1,Array2,Array4};
 use std::collections::{BTreeMap,BTreeSet};
+use hdf5_metno as hdf5;
 
 fn main()->Result<(),Box<dyn Error>> {
     simple_logger::SimpleLogger::new().init()?;
-    let _ = hdf5::silence_errors();
+    let _ = hdf5::silence_errors(true);
 
     let args = App::new("tropomifpex")
 	.arg(Arg::with_name("out").short("o").long("output").value_name("PATH").takes_value(true).required(true))
@@ -64,14 +65,14 @@ fn main()->Result<(),Box<dyn Error>> {
 	info!("Dataset ID: {:?}",dataset_id);
 
 	let gr = fd.group("/METADATA/EOP_METADATA/om:procedure/eop:instrument")?;
-	let instrument : &hdf5::types::FixedAscii<[u8;16]> = &gr.attribute("eop:shortName")?.read_raw()?[0];
+	let instrument : &hdf5::types::FixedAscii<16> = &gr.attr("eop:shortName")?.read_raw()?[0];
 	info!("Instrument: {}",instrument);
 
 	let gr = fd.group("/METADATA/EOP_METADATA/om:procedure/eop:platform")?;
-	let platform : &hdf5::types::FixedAscii<[u8;16]> = &gr.attribute("eop:shortName")?.read_raw()?[0];
+	let platform : &hdf5::types::FixedAscii<16> = &gr.attr("eop:shortName")?.read_raw()?[0];
 	info!("Platform: {}",platform);
 
-	let orbit = fd.attribute("orbit")?.read_raw::<i32>()?[0] as usize;
+	let orbit = fd.attr("orbit")?.read_raw::<i32>()?[0] as usize;
 	info!("Orbit: {}",orbit);
 
 	let lats_dyn : ArrayD<f32> = fd.dataset("/PRODUCT/SUPPORT_DATA/GEOLOCATIONS/latitude_bounds")?.read_dyn()?;

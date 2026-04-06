@@ -5,7 +5,7 @@ authors = ["Berke DURAK <bd@exhrd.fr>"]
 edition = "2024"
 
 [dependencies]
-footprint = { version = "0.2.3" }
+footprint = { version = "0.2.5" }
 reqwest = { version = "0.11", features = ["json"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -19,9 +19,9 @@ serde_json = { version = "^1.0" }
 rmp-serde = { version = "^0.15" }
 geo = { version = "^0.31" }
 geo-clipper = { version = "^0.9" }
-hdf5 = { git = "https://github.com/balintbalazs/hdf5-rust", branch = "master" } #version = "^0.7" }
+hdf5-metno = { version = "=0.12.3" }
 clap = { version = "^2.33" }
-ndarray = { version = "^0.13" }
+ndarray = { version = "^0.17.2" }
 log = { version = "^0.4" }
 simple_logger = { version = "^5.2" }
 #percent-encoding = { version = "^2.1" }
